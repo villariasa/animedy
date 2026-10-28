@@ -89,6 +89,8 @@ export type AnimeSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
 
 /** Mirrors `AnimeRow` in src/animedy_v1/interfaces/db.ts (fields the UI uses). */
 export interface AnimeDetails {
+  score?: number | null;
+  popularity?: number | null;
   id: number;
   anilist_id: number | null;
   mal_id: number | null;

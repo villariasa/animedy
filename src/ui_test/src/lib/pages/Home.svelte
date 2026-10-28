@@ -303,7 +303,7 @@
                     {displayTitle(item.title_english, item.title_romaji)}
                   </p>
                   <p class="text-xs text-muted-foreground">
-                    {[item.format, item.season_year].filter(Boolean).join(" · ")}
+                    {#if item.score}<span class="font-semibold text-amber-400">★ {(item.score / 10).toFixed(1)}</span> · {/if}{[item.format, item.season_year].filter(Boolean).join(" · ")}
                   </p>
                 </div>
               </button>
@@ -472,7 +472,14 @@
                     >
                       {displayTitle(item.title_english, item.title_romaji)}
                     </button>
-                    <p class="mt-0.5 truncate text-xs text-muted-foreground">
+                    <p class="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                      {#if item.score}
+                        <span class="inline-flex items-center gap-0.5 font-semibold text-amber-400">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3" aria-hidden="true"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd" /></svg>
+                          {(item.score / 10).toFixed(1)}
+                        </span>
+                        <span>·</span>
+                      {/if}
                       {[item.format, item.season_year, item.status ? item.status.toLowerCase().replace(/_/g, " ") : null].filter(Boolean).join(" · ")}
                     </p>
                   </div>
@@ -622,6 +629,12 @@
                         {displayTitle(item.title_english, item.title_romaji)}
                       </p>
                       <div class="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        {#if item.score}
+                          <span class="inline-flex items-center gap-0.5 font-bold text-amber-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-2.5 w-2.5" aria-hidden="true"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd" /></svg>
+                            {(item.score / 10).toFixed(1)}
+                          </span>
+                        {/if}
                         {#if item.format}
                           <span class="rounded bg-muted px-1 py-0.2 text-[10px] font-medium uppercase">
                             {item.format}

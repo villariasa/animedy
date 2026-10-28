@@ -8,6 +8,7 @@
   import Placeholder from "$lib/pages/Placeholder.svelte";
   import Settings from "$lib/pages/Settings.svelte";
   import Watch from "$lib/pages/Watch.svelte";
+  import UndoSnackbar from "$lib/components/UndoSnackbar.svelte";
   import { router } from "$lib/router.svelte";
 
   let isSearchActive = $state(false);
@@ -89,4 +90,6 @@
       <Placeholder title="Not found" task="a future task" />
     {/if}
   </main>
+
+  <UndoSnackbar />
 </div>

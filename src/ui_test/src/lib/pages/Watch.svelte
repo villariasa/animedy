@@ -57,9 +57,51 @@
     return episodes;
   });
 
-  type StreamServer = "embed_animekai" | "embed_videasy" | "embed_vidsrc_cc" | "embed_vidlink";
+  type StreamServer = "embed_animekai" | "embed_animix" | "embed_videasy" | "embed_vidsrc_cc";
   let selectedServer = $state<StreamServer>("embed_animekai");
   let frameBox = $state<HTMLDivElement | null>(null);
+
+  // Server 2: animixplay.ba episode page, cropped so ONLY the player region is
+  // visible (their player is referer-locked, so the page itself is framed).
+  // Slug is derived from the title; existence is confirmed via their CORS-open
+  // WordPress REST API before the server is offered.
+  let animixUrl = $state<string | null>(null);
+  let cropW = $state(0);
+  // Measured at 1366px viewport: player box x=28 y=435 w=956 (h≈538 shown).
+  const AMX = { viewport: 1366, x: 28, y: 435, w: 956 };
+  const amxScale = $derived(cropW > 0 ? cropW / AMX.w : 1);
+
+  function slugify(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  async function findAnimixEpisode(epNum: number): Promise<string | null> {
+    const candidates = [...new Set(
+      [anime?.title_english, anime?.title_romaji]
+        .filter((t): t is string => !!t)
+        .map((t) => `${slugify(t)}-episode-${epNum}-english-subbed`)
+    )];
+    for (const slug of candidates) {
+      try {
+        const res = await fetch(
+          `https://animixplay.ba/wp-json/wp/v2/posts?slug=${slug}&_fields=link`
+        );
+        if (res.ok) {
+          const posts = (await res.json()) as Array<{ link: string }>;
+          if (posts.length > 0) {
+            return posts[0]?.link ?? `https://animixplay.ba/${slug}/`;
+          }
+        }
+      } catch {
+        // network/CORS hiccup — try next candidate
+      }
+    }
+    return null;
+  }
 
   const animeTitle = $derived(anime ? displayTitle(anime.title_english, anime.title_romaji) : "");
   const currentEpisode = $derived(episodes.find((e) => e.episode_number === episodeId));
@@ -81,9 +123,9 @@
     // the user's first click is a gesture INSIDE the frame, so playback starts
     // WITH sound — autoplay can only ever start muted (browser policy).
     embed_animekai: `https://megaplay.buzz/stream/mal/${malId ?? 0}/${episodeId}/sub?autostart=false`,
+    embed_animix: animixUrl ?? "",
     embed_videasy: `https://player.videasy.net/anime/${animeId}/${episodeId}`,
-    embed_vidsrc_cc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeId}/sub`,
-    embed_vidlink: `https://vidlink.pro/anime/${animeId}/${episodeId}/sub`
+    embed_vidsrc_cc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeId}/sub`
   });
 
   // User-gesture fullscreen for the frame itself ("auto" fullscreen without a
@@ -114,8 +156,12 @@
     try {
       anime = await getAnimeDetails(aId);
       episodes = buildEpisodes(anime);
+      animixUrl = await findAnimixEpisode(epNum);
       if (anime.mal_id === null && selectedServer === "embed_animekai") {
-        selectedServer = "embed_videasy";
+        selectedServer = animixUrl ? "embed_animix" : "embed_videasy";
+      }
+      if (selectedServer === "embed_animix" && !animixUrl) {
+        selectedServer = anime.mal_id !== null ? "embed_animekai" : "embed_videasy";
       }
       await registerInHistory(aId, epNum);
     } catch (err) {
@@ -208,7 +254,17 @@
             class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_animekai' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
             onclick={() => (selectedServer = 'embed_animekai')}
           >
-            Server 1 (AnimeKai)
+            Server 1
+          </button>
+        {/if}
+
+        {#if animixUrl}
+          <button
+            type="button"
+            class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_animix' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+            onclick={() => (selectedServer = 'embed_animix')}
+          >
+            Server 2
           </button>
         {/if}
 
@@ -217,7 +273,7 @@
           class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_videasy' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
           onclick={() => (selectedServer = 'embed_videasy')}
         >
-          Server 2 (Videasy)
+          Server 3
         </button>
 
         <button
@@ -225,15 +281,7 @@
           class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidsrc_cc' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
           onclick={() => (selectedServer = 'embed_vidsrc_cc')}
         >
-          Server 3 (VidSrc CC)
-        </button>
-
-        <button
-          type="button"
-          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidlink' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-          onclick={() => (selectedServer = 'embed_vidlink')}
-        >
-          Server 4 (VidLink)
+          Server 4
         </button>
 
         <button
@@ -251,14 +299,35 @@
     </div>
 
     <div class="relative">
-      <div bind:this={frameBox} class="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black shadow-lg">
-        <iframe
-          src={serverEmbedUrls[selectedServer]}
-          title="{animeTitle} - {episodeLabel}"
-          class="h-full w-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowfullscreen
-        ></iframe>
+      <div
+        bind:this={frameBox}
+        bind:clientWidth={cropW}
+        class="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black shadow-lg"
+      >
+        {#if selectedServer === "embed_animix" && animixUrl}
+          <!-- Their page cropped to the player region; sandbox (no allow-popups)
+               blocks their popup/new-tab ads. -->
+          <iframe
+            src={animixUrl}
+            title="{animeTitle} - {episodeLabel}"
+            class="border-0"
+            style="width:{AMX.viewport}px;height:1200px;transform:scale({amxScale}) translate({-AMX.x}px, {-AMX.y}px);transform-origin:0 0;"
+            scrolling="no"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowfullscreen
+          ></iframe>
+        {:else}
+          <!-- No sandbox here: megaplay detects it and refuses to play
+               ("Sandboxed our player is not allowed"). -->
+          <iframe
+            src={serverEmbedUrls[selectedServer]}
+            title="{animeTitle} - {episodeLabel}"
+            class="h-full w-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowfullscreen
+          ></iframe>
+        {/if}
       </div>
       <p class="mt-2 text-center text-[11px] text-muted-foreground">
         Not loading? Switch servers above — and ad-blockers often block these players, so whitelist the site if the frame stays blank.
@@ -280,6 +349,18 @@
 
       <!-- Quick Episode Switch Buttons -->
       <div class="flex flex-wrap items-center gap-2">
+        <a
+          href={serverEmbedUrls[selectedServer]}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/15 px-3 py-1.5 text-xs font-semibold text-sky-400 transition-colors hover:bg-sky-500/25"
+          title="Open the player full-page in a new tab — use its built-in download option there"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          Download
+        </a>
         <button
           type="button"
           class="inline-flex items-center gap-1.5 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-semibold text-green-500 transition-colors hover:bg-green-500/25"
@@ -379,7 +460,7 @@
         <div class="flex flex-col gap-2 border-b border-border/60 p-2.5 bg-background/50">
           {#if drawerChunks.length > 0}
             <div class="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
-              {#each drawerChunks as chunk, idx}
+              {#each drawerChunks as chunk, idx (chunk.label)}
                 <button
                   type="button"
                   class="rounded-md px-2 py-1 text-[11px] font-medium transition-colors whitespace-nowrap {drawerChunkIndex === idx && !drawerQuery ? 'bg-primary text-primary-foreground font-bold shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"

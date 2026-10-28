@@ -64,6 +64,10 @@
   const metaLine = $derived(
     anime
       ? [
+          anime.score ? `★ ${(anime.score / 10).toFixed(1)}` : null,
+          anime.popularity
+            ? `${Intl.NumberFormat("en", { notation: "compact" }).format(anime.popularity)} members`
+            : null,
           anime.format,
           anime.season && anime.season_year ? `${anime.season} ${anime.season_year}` : anime.season_year,
           anime.episode_count ? `${anime.episode_count} eps` : null,
@@ -285,7 +289,7 @@
           {#if chunks.length > 0}
             <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
               <span class="text-xs font-semibold text-muted-foreground mr-1">Range:</span>
-              {#each chunks as chunk, idx}
+              {#each chunks as chunk, idx (chunk.label)}
                 <button
                   type="button"
                   class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap {activeChunkIndex === idx && !jumpQuery ? 'bg-primary text-primary-foreground shadow-sm font-bold' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"

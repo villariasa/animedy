@@ -32,6 +32,7 @@ const MEDIA_FIELDS = `
   bannerImage
   nextAiringEpisode { episode }
   averageScore
+  popularity
   genres
 `;
 
@@ -51,6 +52,7 @@ interface AniListMedia {
   coverImage: { extraLarge: string | null; large: string | null };
   bannerImage: string | null;
   averageScore: number | null;
+  popularity: number | null;
   genres: string[] | null;
   nextAiringEpisode: { episode: number } | null;
   relations?: { edges: Array<{ relationType: string; node: AniListMedia }> };
@@ -124,6 +126,8 @@ function toDetails(m: AniListMedia): AnimeDetails {
     description: m.description,
     cover_image: m.coverImage.extraLarge ?? m.coverImage.large,
     banner_image: m.bannerImage,
+    score: m.averageScore,
+    popularity: m.popularity,
     franchise_key: null,
     sequence_order: null,
     season_label: null,
