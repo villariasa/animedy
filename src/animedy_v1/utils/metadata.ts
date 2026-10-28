@@ -32,13 +32,21 @@ export function isCacheFresh(cachedAt: string | null): boolean {
 }
 
 export async function getAnimeRowById(animeId: number): Promise<AnimeRow | null> {
-  const [row] = await query<AnimeRow[]>(SELECT_ANIME_BY_ID, [animeId]);
-  return row ?? null;
+  try {
+    const [row] = await query<AnimeRow[]>(SELECT_ANIME_BY_ID, [animeId]);
+    return row ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getAnimeRowByAnilistId(anilistId: number): Promise<AnimeRow | null> {
-  const [row] = await query<AnimeRow[]>(SELECT_ANIME_BY_ANILIST_ID, [anilistId]);
-  return row ?? null;
+  try {
+    const [row] = await query<AnimeRow[]>(SELECT_ANIME_BY_ANILIST_ID, [anilistId]);
+    return row ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getAnimeRowByMalId(malId: number): Promise<AnimeRow | null> {
@@ -208,7 +216,7 @@ export async function resolveAnimeRow(
     return cached;
   }
 
-  const anilistId = params.anilist_id ?? cached?.anilist_id ?? undefined;
+  const anilistId = params.anilist_id ?? cached?.anilist_id ?? params.anime_id;
   const malId = cached?.mal_id ?? undefined;
   const sourceOrder: MetadataSource[] =
     preferredSource === "anilist" ? ["anilist", "mal"] : ["mal", "anilist"];
@@ -224,7 +232,38 @@ export async function resolveAnimeRow(
           input.season_label = cached.season_label;
           input.arc_name = cached.arc_name;
         }
-        return await upsertAnimeInput(input);
+        try {
+          return await upsertAnimeInput(input);
+        } catch {
+          return {
+            id: anilistId ?? input.anilist_id ?? 1,
+            anilist_id: input.anilist_id,
+            mal_id: input.mal_id,
+            title_romaji: input.title_romaji,
+            title_english: input.title_english,
+            title_native: input.title_native,
+            synonyms: input.synonyms,
+            format: input.format,
+            status: input.status,
+            season: input.season,
+            season_year: input.season_year,
+            start_date: input.start_date,
+            end_date: input.end_date,
+            episode_count: input.episode_count,
+            episode_duration: input.episode_duration,
+            description: input.description,
+            cover_image: input.cover_image,
+            banner_image: input.banner_image,
+            franchise_key: input.franchise_key,
+            sequence_order: input.sequence_order,
+            season_label: input.season_label,
+            arc_name: input.arc_name,
+            metadata_json: input.metadata_json,
+            cached_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        }
       }
     } catch (err) {
       await logError(`metadata.resolveAnimeRow.${source}`, err);

@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { logError } from "../lib/errorlogger.js";
 import { fail } from "./lib/response.js";
@@ -66,6 +67,19 @@ app.post("/docs/file", async (context) => {
 // documentation UI page, not an API endpoint, so a standard GET is used so
 // it can be opened directly in a browser.
 app.get("/docs", (context) => context.html(DOCS_PAGE_HTML));
+
+// Serve static assets and SPA frontend (built in src/ui_test/dist)
+app.use("/assets/*", serveStatic({ root: "./src/ui_test/dist" }));
+app.use("/icons/*", serveStatic({ root: "./src/ui_test/dist" }));
+app.use("/manifest.webmanifest", serveStatic({ path: "./src/ui_test/dist/manifest.webmanifest" }));
+app.use("/favicon.ico", serveStatic({ path: "./src/ui_test/dist/favicon.ico" }));
+app.get("/", serveStatic({ path: "./src/ui_test/dist/index.html" }));
+app.get("*", async (c, next) => {
+  if (c.req.path.startsWith("/api")) {
+    return next();
+  }
+  return serveStatic({ path: "./src/ui_test/dist/index.html" })(c, next);
+});
 
 app.notFound((context) => context.json(fail("Not found", 404), 404));
 

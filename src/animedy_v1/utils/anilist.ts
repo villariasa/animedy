@@ -44,6 +44,26 @@ async function graphqlRequest<T>(gqlQuery: string, variables: Record<string, unk
   });
 }
 
+
+export async function fetchCuratedAniListMedia(
+  sort: "TRENDING_DESC" | "POPULARITY_DESC" | "SCORE_DESC" = "TRENDING_DESC",
+  perPage = 20,
+  status?: string
+): Promise<AniListMedia[]> {
+  const statusFilter = status ? `, status: ${status}` : "";
+  const gqlQuery = `
+    query ($perPage: Int) {
+      Page(page: 1, perPage: $perPage) {
+        media(type: ANIME, sort: [${sort}]${statusFilter}) {
+          ${MEDIA_FIELDS}
+        }
+      }
+    }
+  `;
+  const result = await graphqlRequest<AniListSearchResponse>(gqlQuery, { perPage });
+  return result.data.Page.media;
+}
+
 export async function searchAniListMedia(titleQuery: string): Promise<AniListMedia[]> {
   const gqlQuery = `
     query ($search: String) {
@@ -123,4 +143,64 @@ export function mapAniListMediaToAnimeInput(media: AniListMedia): AnimeUpsertInp
     arc_name: null,
     metadata_json: media as unknown as Record<string, unknown>,
   };
+}
+
+
+export interface AniListStreamingEpisode {
+  title: string;
+  thumbnail: string | null;
+  url: string | null;
+  site: string | null;
+}
+
+export interface AniListEpisodeData {
+  episodes: AniListStreamingEpisode[];
+  trailer: { id: string; site: string; thumbnail: string | null } | null;
+  bannerImage: string | null;
+  coverImage: string | null;
+}
+
+export async function fetchAniListMediaExtras(anilistId: number): Promise<AniListEpisodeData> {
+  const gqlQuery = `
+    query ($id: Int) {
+      Media(id: $id) {
+        bannerImage
+        coverImage { extraLarge large medium }
+        trailer { id site thumbnail }
+        streamingEpisodes {
+          title
+          thumbnail
+          url
+          site
+        }
+      }
+    }
+  `;
+  try {
+    const result = await graphqlRequest<{
+      data: {
+        Media: {
+          bannerImage: string | null;
+          coverImage: { extraLarge?: string; large?: string; medium?: string } | null;
+          trailer: { id: string; site: string; thumbnail: string | null } | null;
+          streamingEpisodes: AniListStreamingEpisode[] | null;
+        } | null;
+      };
+    }>(gqlQuery, { id: anilistId });
+
+    const media = result.data?.Media;
+    return {
+      episodes: media?.streamingEpisodes ?? [],
+      trailer: media?.trailer ?? null,
+      bannerImage: media?.bannerImage ?? null,
+      coverImage: media?.coverImage?.extraLarge ?? media?.coverImage?.large ?? media?.coverImage?.medium ?? null,
+    };
+  } catch {
+    return { episodes: [], trailer: null, bannerImage: null, coverImage: null };
+  }
+}
+
+export async function fetchAniListStreamingEpisodes(anilistId: number): Promise<AniListStreamingEpisode[]> {
+  const data = await fetchAniListMediaExtras(anilistId);
+  return data.episodes;
 }

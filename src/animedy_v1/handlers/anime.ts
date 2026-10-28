@@ -11,7 +11,7 @@ import {
 } from "../schemas/anime.js";
 import { SEARCH_ANIME_BY_TITLE, SELECT_FRANCHISE_ENTRIES } from "../queries/anime.js";
 import { SELECT_SETTINGS_BY_USER } from "../queries/settings.js";
-import { fetchAniListMediaById, mapAniListMediaToAnimeInput, searchAniListMedia } from "../utils/anilist.js";
+import { fetchAniListMediaById, mapAniListMediaToAnimeInput, searchAniListMedia, fetchCuratedAniListMedia } from "../utils/anilist.js";
 import { mapJikanAnimeToAnimeInput, searchJikanAnime } from "../utils/jikan.js";
 import {
   MetadataFetchError,
@@ -77,27 +77,74 @@ export async function animeSearchHandler(context: Context): Promise<Response> {
     const { query: titleQuery, metadata_source } = parsed.data;
     const source = await resolvePreferredSource(context, metadata_source);
 
-    const cachedRows = await query<AnimeSearchCacheRow[]>(SEARCH_ANIME_BY_TITLE, [
-      titleQuery,
-      titleQuery,
-      titleQuery,
-    ]);
-    if (cachedRows.length > 0) {
-      const responseData: AnimeSearchResponse = { results: cachedRows.map(toSearchResultItem) };
-      return context.json(ok(responseData, "Search results (cache)"), 200);
+    // Skip DB search for special curated tags
+    if (!titleQuery.startsWith(":")) {
+      const cachedRows = await query<AnimeSearchCacheRow[]>(SEARCH_ANIME_BY_TITLE, [
+        titleQuery,
+        titleQuery,
+        titleQuery,
+      ]).catch(() => [] as AnimeSearchCacheRow[]);
+      if (cachedRows.length > 0) {
+        const responseData: AnimeSearchResponse = { results: cachedRows.map(toSearchResultItem) };
+        return context.json(ok(responseData, "Search results (cache)"), 200);
+      }
     }
 
     const results: AnimeSearchCacheRow[] = [];
     try {
       if (source === "anilist") {
-        const mediaList = await searchAniListMedia(titleQuery);
+        let mediaList;
+        if (titleQuery === ":trending") {
+          mediaList = await fetchCuratedAniListMedia("TRENDING_DESC", 20);
+        } else if (titleQuery === ":popular") {
+          mediaList = await fetchCuratedAniListMedia("POPULARITY_DESC", 20);
+        } else if (titleQuery === ":top_rated") {
+          mediaList = await fetchCuratedAniListMedia("SCORE_DESC", 20);
+        } else if (titleQuery === ":this_week") {
+          mediaList = await fetchCuratedAniListMedia("TRENDING_DESC", 20, "RELEASING");
+        } else if (titleQuery === ":this_month") {
+          mediaList = await fetchCuratedAniListMedia("POPULARITY_DESC", 20, "RELEASING");
+        } else {
+          mediaList = await searchAniListMedia(titleQuery);
+        }
+
         for (const media of mediaList.slice(0, 25)) {
-          results.push(await upsertAnimeInput(mapAniListMediaToAnimeInput(media)));
+          try {
+            results.push(await upsertAnimeInput(mapAniListMediaToAnimeInput(media)));
+          } catch {
+            // If DB is offline or upsert fails, return direct shape
+            results.push({
+              id: media.id,
+              anilist_id: media.id,
+              mal_id: media.idMal,
+              title_romaji: media.title.romaji,
+              title_english: media.title.english,
+              cover_image: media.coverImage.extraLarge ?? media.coverImage.large ?? media.coverImage.medium,
+              format: (media.format as AnimeFormat) ?? null,
+              status: (media.status as AnimeStatus) ?? null,
+              season_year: media.seasonYear,
+            });
+          }
         }
       } else {
         const dataList = await searchJikanAnime(titleQuery);
         for (const data of dataList.slice(0, 25)) {
-          results.push(await upsertAnimeInput(mapJikanAnimeToAnimeInput(data)));
+          const mapped = mapJikanAnimeToAnimeInput(data);
+          try {
+            results.push(await upsertAnimeInput(mapped));
+          } catch {
+            results.push({
+              id: data.mal_id,
+              anilist_id: null,
+              mal_id: data.mal_id,
+              title_romaji: mapped.title_romaji,
+              title_english: mapped.title_english,
+              cover_image: mapped.cover_image,
+              format: mapped.format,
+              status: mapped.status,
+              season_year: mapped.season_year,
+            });
+          }
         }
       }
     } catch (err) {

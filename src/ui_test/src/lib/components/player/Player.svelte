@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Hls from "hls.js";
   import type { QualityVariant, SkipSegment, SubtitleTrack } from "$lib/api/types";
   import PlayerControls from "./PlayerControls.svelte";
 
@@ -75,6 +76,10 @@
   );
   const currentSrc = $derived(
     qualities.find((q) => q.label === activeQuality)?.url ?? streamUrl
+  );
+  const isYouTube = $derived(
+    typeof currentSrc === "string" &&
+    (currentSrc.includes("youtube.com") || currentSrc.includes("youtube-nocookie.com") || currentSrc.includes("youtu.be"))
   );
 
   export function play(): void {
@@ -237,6 +242,40 @@
     }
   });
 
+  let hlsInstance: Hls | null = null;
+
+  // Stream source loader with HLS playlist support (.m3u8)
+  $effect(() => {
+    const src = currentSrc;
+    if (!video || !src) return;
+
+    if (src.includes(".m3u8")) {
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = src;
+      } else if (Hls.isSupported()) {
+        if (hlsInstance) {
+          hlsInstance.destroy();
+        }
+        hlsInstance = new Hls({ enableWorker: true });
+        hlsInstance.loadSource(src);
+        hlsInstance.attachMedia(video);
+      }
+    } else {
+      if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+      }
+      video.src = src;
+    }
+
+    return () => {
+      if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+      }
+    };
+  });
+
   // Apply remembered player settings once the video element exists.
   $effect(() => {
     if (video) {
@@ -280,13 +319,13 @@
   onpointermove={pokeControls}
   onpointerdown={pokeControls}
 >
+  <!-- Native HTML5 Video Player with HLS Playlist and MP4 Support -->
   <!-- svelte-ignore a11y_media_has_caption -->
   <video
     bind:this={video}
-    src={currentSrc}
-    class="h-full w-full"
+    class="h-full w-full object-contain"
     playsinline
-    preload="metadata"
+    preload="auto"
     autoplay={autoPlay}
     bind:currentTime
     bind:duration
@@ -306,6 +345,22 @@
       <track kind="subtitles" src={sub.url} srclang={sub.lang} label={sub.label} />
     {/each}
   </video>
+
+  <!-- Big Central Play Button Overlay when paused -->
+  {#if !playing && !activeSkipSegment}
+    <button
+      type="button"
+      class="absolute inset-0 flex items-center justify-center bg-black/25 transition-opacity"
+      onclick={togglePlay}
+      aria-label="Play video"
+    >
+      <span class="flex h-16 w-16 items-center justify-center rounded-full bg-primary/90 text-primary-foreground shadow-2xl backdrop-blur transition-transform hover:scale-110 active:scale-95">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="ml-1 h-8 w-8" aria-hidden="true">
+          <path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd" />
+        </svg>
+      </span>
+    </button>
+  {/if}
 
   {#if activeSkipSegment}
     <button

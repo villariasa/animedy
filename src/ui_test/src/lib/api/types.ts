@@ -196,6 +196,8 @@ export interface EpisodesSourcesResponse {
   stream_url: string;
   subtitles: SubtitleTrack[];
   qualities: QualityVariant[];
+  official_url?: string | null;
+  official_site?: string | null;
 }
 
 export type SkipSource = "aniskip" | "manual";

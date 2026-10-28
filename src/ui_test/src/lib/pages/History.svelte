@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { apiPost, ApiError } from "$lib/api/client";
+  import { ApiError } from "$lib/api/client";
+  import { apiPostCached } from "$lib/api/cached";
   import type { HistoryListItem, HistoryListResponse } from "$lib/api/types";
   import { Button } from "$lib/components/ui/button";
   import { displayTitle } from "$lib/format";
@@ -24,7 +25,9 @@
     loading = true;
     error = null;
     try {
-      const res = await apiPost<HistoryListResponse>("/api/history/list", {
+      // Cached (IndexedDB) so the history list still renders offline;
+      // the cache is cleared on logout in the auth store.
+      const res = await apiPostCached<HistoryListResponse>("/api/history/list", {
         limit: PAGE_SIZE,
         offset: newOffset
       });

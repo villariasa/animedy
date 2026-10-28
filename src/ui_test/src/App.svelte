@@ -46,7 +46,7 @@
     </nav>
   </header>
 
-  <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+  <main class="mx-auto w-full max-w-[1480px] flex-1 px-4 sm:px-6 py-8">
     {#if showLogin && !auth.isLoggedIn}
       <form class="mx-auto flex max-w-sm flex-col gap-3" onsubmit={onLoginSubmit}>
         <label class="flex flex-col gap-1 text-sm">

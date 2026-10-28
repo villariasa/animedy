@@ -11,12 +11,19 @@ export function getPool(): Pool {
     return pool;
   }
 
+  // Support Railway / standard DB environment variables
+  const dbUrl = process.env.MYSQL_URL || process.env.DATABASE_URL;
+  if (dbUrl) {
+    pool = mysql.createPool(dbUrl);
+    return pool;
+  }
+
   const options: PoolOptions = {
-    host: process.env.DB_HOST ?? "localhost",
-    port: Number(process.env.DB_PORT ?? 3306),
-    user: process.env.DB_USER ?? "root",
-    password: process.env.DB_PASSWORD ?? "",
-    database: process.env.DB_NAME ?? "animedy",
+    host: process.env.DB_HOST ?? process.env.MYSQLHOST ?? "localhost",
+    port: Number(process.env.DB_PORT ?? process.env.MYSQLPORT ?? 3306),
+    user: process.env.DB_USER ?? process.env.MYSQLUSER ?? "root",
+    password: process.env.DB_PASSWORD ?? process.env.MYSQLPASSWORD ?? "",
+    database: process.env.DB_NAME ?? process.env.MYSQLDATABASE ?? "animedy",
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,

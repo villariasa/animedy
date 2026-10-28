@@ -1,4 +1,5 @@
 import { apiPost, ApiError, getStoredToken, setStoredToken } from "$lib/api/client";
+import { clearMetaCache } from "$lib/db/local";
 import { mergeGuestProgress } from "$lib/db/merge";
 import type {
   AuthLoginRequest,
@@ -50,6 +51,7 @@ class AuthStore {
 
   logout(): void {
     this.clearSession();
+    void clearMetaCache().catch(() => undefined);
   }
 
   private async authenticate(route: string, body: object): Promise<boolean> {

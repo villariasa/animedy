@@ -51,9 +51,10 @@ export async function skipGetHandler(context: Context): Promise<Response> {
     const { episode_id, skip_source } = parsed.data;
     const preferredSource = await resolvePreferredSkipSource(context, skip_source);
 
-    const [episode] = await query<EpisodeWithMal[]>(SELECT_EPISODE_WITH_ANIME_MAL, [episode_id]);
+    const [episode] = await query<EpisodeWithMal[]>(SELECT_EPISODE_WITH_ANIME_MAL, [episode_id]).catch(() => []);
     if (!episode) {
-      return context.json(fail("Episode not found", 404), 404);
+      const responseData: SkipGetResponse = { episode_id, segments: [] };
+      return context.json(ok(responseData, "No skip segments found"), 200);
     }
 
     const sourceOrder: SkipSource[] =

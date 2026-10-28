@@ -72,3 +72,9 @@ export async function getCached<T>(key: string): Promise<T | undefined> {
 export async function putCached(key: string, data: unknown): Promise<void> {
   await (await db()).put("metaCache", { key, data, cached_at: new Date().toISOString() });
 }
+
+/** Clear all cached API responses — called on logout so user-specific
+ * responses (e.g. history) can't leak to the next account on this browser. */
+export async function clearMetaCache(): Promise<void> {
+  await (await db()).clear("metaCache");
+}
