@@ -3,6 +3,8 @@
   import { browseAnime, searchAnime, type BrowseTag } from "$lib/api/anilist";
   import type { AnimeSearchResultItem, ContinueWatchingItem } from "$lib/api/types";
   import ContinueWatchingCard from "$lib/components/ContinueWatchingCard.svelte";
+  import HeroSpotlight from "$lib/components/HeroSpotlight.svelte";
+  import CommunityShareBar from "$lib/components/CommunityShareBar.svelte";
   import { getContinueWatching } from "$lib/continuation";
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
@@ -109,7 +111,24 @@
   });
 </script>
 
-<div class="flex flex-col gap-10">
+<div class="flex flex-col gap-8">
+  <!-- Hero Spotlight Carousel (Unique dual-pane stage with upcoming rail) -->
+  {#if query.trim().length < 2}
+    {#if curatedItems.length > 0}
+      <HeroSpotlight items={curatedItems.slice(0, 8)} />
+    {:else if curatedLoading}
+      <div class="relative h-[440px] lg:h-[500px] w-full animate-pulse rounded-3xl border border-border/60 bg-card/40 p-8 flex flex-col justify-end">
+        <div class="h-6 w-32 rounded-full bg-muted/60 mb-4"></div>
+        <div class="h-10 w-2/3 rounded-xl bg-muted/60 mb-3"></div>
+        <div class="h-4 w-1/3 rounded bg-muted/40 mb-6"></div>
+        <div class="h-12 w-40 rounded-xl bg-muted/60"></div>
+      </div>
+    {/if}
+
+    <!-- Love Animedy Community Sharing Bar -->
+    <CommunityShareBar />
+  {/if}
+
   <!-- Search bar with Tailwind Heroicons -->
   <search class="relative mx-auto w-full max-w-xl">
     <label class="flex flex-col gap-1" aria-label="Anime search">
@@ -267,8 +286,8 @@
       <section class="min-w-0 flex-1" aria-label="Curated anime">
         <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 class="text-xl font-bold tracking-tight">Popular & Trending</h2>
-            <p class="text-xs text-muted-foreground">Top ranked releases updated continuously</p>
+            <h2 class="text-xl font-bold tracking-tight">Popular Today</h2>
+            <p class="text-xs text-muted-foreground">Realtime rankings from AniList activity, updated continuously</p>
           </div>
 
           <!-- Main tabs -->
@@ -298,7 +317,7 @@
                   d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z"
                 />
               </svg>
-              Trending This Week
+              Popular Today
             </button>
 
             <button

@@ -31,6 +31,8 @@ const MEDIA_FIELDS = `
   coverImage { extraLarge large }
   bannerImage
   nextAiringEpisode { episode }
+  averageScore
+  genres
 `;
 
 interface AniListMedia {
@@ -48,6 +50,8 @@ interface AniListMedia {
   description: string | null;
   coverImage: { extraLarge: string | null; large: string | null };
   bannerImage: string | null;
+  averageScore: number | null;
+  genres: string[] | null;
   nextAiringEpisode: { episode: number } | null;
   relations?: { edges: Array<{ relationType: string; node: AniListMedia }> };
 }
@@ -90,10 +94,13 @@ function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
     title_romaji: m.title.romaji,
     title_english: m.title.english,
     cover_image: m.coverImage.extraLarge ?? m.coverImage.large,
+    banner_image: m.bannerImage,
     format: (m.format as AnimeFormat) ?? null,
     status: (m.status as AnimeStatus) ?? null,
     season_year: m.seasonYear,
-    description: m.description
+    description: m.description,
+    score: m.averageScore,
+    genres: m.genres ?? []
   };
 }
 
@@ -141,7 +148,7 @@ export type BrowseTag = "trending" | "popular" | "top_rated" | "this_week" | "th
 
 export async function browseAnime(tag: BrowseTag): Promise<AnimeSearchResultItem[]> {
   const sortMap: Record<BrowseTag, string> = {
-    trending: "TRENDING_DESC",
+    trending: "TRENDING_DESC", // AniList's realtime activity metric = "popular today"
     popular: "POPULARITY_DESC",
     top_rated: "SCORE_DESC",
     this_week: "TRENDING_DESC",
@@ -152,17 +159,23 @@ export async function browseAnime(tag: BrowseTag): Promise<AnimeSearchResultItem
   const month = now.getMonth() + 1;
   const season = month <= 3 ? "WINTER" : month <= 6 ? "SPRING" : month <= 9 ? "SUMMER" : "FALL";
   const seasonal = tag === "this_week" || tag === "this_month";
+  // Standard-rankings guardrails: Japanese anime only (no donghua flooding the
+  // lists), and Top Rated needs a popularity floor — raw SCORE_DESC surfaces
+  // obscure titles with a handful of votes, which is not how MAL/AniList
+  // Top-100 style rankings work.
+  const minPopularity = tag === "top_rated" ? 50000 : null;
   const data = await gql<{ Page: { media: AniListMedia[] } }>(
-    `anilist:browse:${tag}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}`,
-    `query ($sort: [MediaSort], $season: MediaSeason, $seasonYear: Int) {
+    `anilist:browse:v2:${tag}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}`,
+    `query ($sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $minPopularity: Int) {
       Page(page: 1, perPage: 24) {
-        media(type: ANIME, sort: $sort, season: $season, seasonYear: $seasonYear, isAdult: false) { ${MEDIA_FIELDS} }
+        media(type: ANIME, sort: $sort, season: $season, seasonYear: $seasonYear, isAdult: false, countryOfOrigin: "JP", popularity_greater: $minPopularity) { ${MEDIA_FIELDS} }
       }
     }`,
     {
       sort: [sortMap[tag]],
       season: seasonal ? season : null,
-      seasonYear: seasonal ? now.getFullYear() : null
+      seasonYear: seasonal ? now.getFullYear() : null,
+      minPopularity
     }
   );
   return data.Page.media.map(toSearchItem);

@@ -54,10 +54,13 @@ export interface AnimeSearchResultItem {
   title_romaji: string | null;
   title_english: string | null;
   cover_image: string | null;
+  banner_image?: string | null;
   format: AnimeFormat | null;
   status: AnimeStatus | null;
   season_year: number | null;
   description?: string | null;
+  score?: number | null;
+  genres?: string[];
 }
 
 export interface AnimeSearchResponse {
