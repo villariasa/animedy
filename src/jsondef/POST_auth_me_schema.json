@@ -1,0 +1,56 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/auth/me": {
+      "post": {
+        "summary": "Validate token and return profile",
+        "tags": ["Auth"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": false, "properties": {} }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "user": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "integer" },
+                            "email": { "type": "string" },
+                            "username": { "type": "string" },
+                            "role": { "type": "string", "enum": ["user", "admin"] },
+                            "created_at": { "type": "string" }
+                          }
+                        },
+                        "has_settings": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "404": { "description": "User not found" }
+        }
+      }
+    }
+  }
+}

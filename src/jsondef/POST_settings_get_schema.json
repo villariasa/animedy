@@ -1,0 +1,66 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/settings/get": {
+      "post": {
+        "summary": "Fetch user player settings and source selections",
+        "tags": ["Settings"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": false, "properties": {} }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings retrieved (defaults created if missing)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "settings": { "$ref": "#/components/schemas/SettingsPayload" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SettingsPayload": {
+        "type": "object",
+        "properties": {
+          "volume": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "playback_speed": { "type": "number" },
+          "subtitle_lang": { "type": "string" },
+          "preferred_quality": { "type": "string" },
+          "autoplay": { "type": "boolean" },
+          "auto_next": { "type": "boolean" },
+          "auto_skip_intro": { "type": "boolean" },
+          "auto_skip_outro": { "type": "boolean" },
+          "auto_fullscreen": { "type": "boolean" },
+          "countdown_seconds": { "type": "integer" },
+          "metadata_source": { "type": "string", "enum": ["anilist", "mal"] },
+          "skip_source": { "type": "string", "enum": ["aniskip", "manual"] }
+        }
+      }
+    }
+  }
+}

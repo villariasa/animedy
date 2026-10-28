@@ -1,0 +1,63 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/settings/save": {
+      "post": {
+        "summary": "Save user player settings and source selections",
+        "tags": ["Settings"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "volume": { "type": "integer", "minimum": 0, "maximum": 100 },
+                  "playback_speed": { "type": "number", "minimum": 0.25, "maximum": 4 },
+                  "subtitle_lang": { "type": "string", "minLength": 2, "maxLength": 16 },
+                  "preferred_quality": { "type": "string", "minLength": 2, "maxLength": 16 },
+                  "autoplay": { "type": "boolean" },
+                  "auto_next": { "type": "boolean" },
+                  "auto_skip_intro": { "type": "boolean" },
+                  "auto_skip_outro": { "type": "boolean" },
+                  "auto_fullscreen": { "type": "boolean" },
+                  "countdown_seconds": { "type": "integer", "minimum": 0, "maximum": 60 },
+                  "metadata_source": { "type": "string", "enum": ["anilist", "mal"] },
+                  "skip_source": { "type": "string", "enum": ["aniskip", "manual"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "settings": { "$ref": "POST_settings_get_schema.json#/components/schemas/SettingsPayload" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}
