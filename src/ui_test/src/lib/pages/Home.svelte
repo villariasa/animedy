@@ -10,7 +10,7 @@
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
 
-  type MainCuratedTab = "trending" | "popular";
+  type MainCuratedTab = "trending" | "new_releases" | "popular";
   type RankingTab = "top_rated" | "trending" | "this_week" | "this_month";
 
   const SEARCH_DEBOUNCE_MS = 400;
@@ -28,6 +28,15 @@
   let curatedItems = $state<AnimeSearchResultItem[]>([]);
   let curatedLoading = $state(false);
   let curatedError = $state<string | null>(null);
+  let curatedPage = $state(1);
+  let curatedHasMore = $state(false);
+  let loadingMore = $state(false);
+
+  const TAB_HEADERS: Record<MainCuratedTab, { title: string; subtitle: string }> = {
+    trending: { title: "Popular Today", subtitle: "Realtime rankings from AniList activity, updated continuously" },
+    new_releases: { title: "New Releases", subtitle: "Freshly premiered anime, newest first" },
+    popular: { title: "Popular This Month", subtitle: "Most watched titles this season" }
+  };
 
   // Right sidebar ranking tab (Top Rated / Trending)
   let rankingTab = $state<RankingTab>("top_rated");
@@ -65,11 +74,21 @@
     searchError = null;
   }
 
+  function curatedTag(tab: MainCuratedTab): BrowseTag {
+    // "Popular This Month" = current season's popularity, not all-time.
+    return tab === "popular" ? "this_month" : tab;
+  }
+
   async function loadCurated(tab: MainCuratedTab): Promise<void> {
     curatedLoading = true;
     curatedError = null;
+    curatedPage = 1;
     try {
-      curatedItems = await browseAnime(tab);
+      const pageResult = await browseAnime(curatedTag(tab));
+      curatedItems = pageResult.items;
+      // AniList reports whether more pages exist — reliable no matter how many
+      // entries the client-side filters drop from this page.
+      curatedHasMore = tab === "new_releases" && pageResult.hasNextPage;
     } catch (err) {
       curatedError = err instanceof ApiError ? err.message : "Failed to load curated anime.";
     } finally {
@@ -77,11 +96,27 @@
     }
   }
 
+  async function loadMoreCurated(): Promise<void> {
+    loadingMore = true;
+    try {
+      const pageResult = await browseAnime(curatedTag(activeTab), curatedPage + 1);
+      curatedPage += 1;
+      // Dedup in case rankings shifted between pages.
+      const seen = new Set(curatedItems.map((i) => i.anime_id));
+      curatedItems = [...curatedItems, ...pageResult.items.filter((i) => !seen.has(i.anime_id))];
+      curatedHasMore = pageResult.hasNextPage;
+    } catch {
+      curatedHasMore = false;
+    } finally {
+      loadingMore = false;
+    }
+  }
+
   async function loadRankings(tab: RankingTab): Promise<void> {
     rankingLoading = true;
     rankingError = null;
     try {
-      const items = await browseAnime(tab as BrowseTag);
+      const { items } = await browseAnime(tab as BrowseTag);
       rankingItems = items.slice(0, 10);
     } catch (err) {
       rankingError = err instanceof ApiError ? err.message : "Failed to load rankings.";
@@ -286,8 +321,8 @@
       <section class="min-w-0 flex-1" aria-label="Curated anime">
         <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 class="text-xl font-bold tracking-tight">Popular Today</h2>
-            <p class="text-xs text-muted-foreground">Realtime rankings from AniList activity, updated continuously</p>
+            <h2 class="text-xl font-bold tracking-tight">{TAB_HEADERS[activeTab].title}</h2>
+            <p class="text-xs text-muted-foreground">{TAB_HEADERS[activeTab].subtitle}</p>
           </div>
 
           <!-- Main tabs -->
@@ -318,6 +353,17 @@
                 />
               </svg>
               Popular Today
+            </button>
+
+            <button
+              type="button"
+              class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors {activeTab === 'new_releases' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+              onclick={() => (activeTab = "new_releases")}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="h-3.5 w-3.5 shrink-0" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
+              </svg>
+              New Releases
             </button>
 
             <button
@@ -379,16 +425,16 @@
                     <!-- Rank badge -->
                     <span
                       class="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold shadow-md backdrop-blur {
-                        index === 0
+                        activeTab !== 'new_releases' && index === 0
                           ? 'bg-amber-400 text-amber-950 ring-2 ring-amber-200'
-                          : index === 1
+                          : activeTab !== 'new_releases' && index === 1
                           ? 'bg-slate-200 text-slate-900 ring-2 ring-slate-100'
-                          : index === 2
+                          : activeTab !== 'new_releases' && index === 2
                           ? 'bg-amber-700 text-amber-100 ring-2 ring-amber-600'
                           : 'bg-black/75 text-white'
                       }"
                     >
-                      #{index + 1}
+                      {activeTab === 'new_releases' ? 'NEW' : `#${index + 1}`}
                     </span>
 
                     <!-- Format pill -->
@@ -434,6 +480,24 @@
               </li>
             {/each}
           </ul>
+
+          {#if activeTab === "new_releases" && curatedHasMore}
+            <div class="mt-6 text-center">
+              <button
+                type="button"
+                disabled={loadingMore}
+                class="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 px-5 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+                onclick={() => void loadMoreCurated()}
+              >
+                {#if loadingMore}
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></span>
+                  Loading…
+                {:else}
+                  Load More
+                {/if}
+              </button>
+            </div>
+          {/if}
         {/if}
       </section>
 

@@ -144,15 +144,23 @@ export async function searchAnime(search: string): Promise<AnimeSearchResultItem
   return data.Page.media.map(toSearchItem);
 }
 
-export type BrowseTag = "trending" | "popular" | "top_rated" | "this_week" | "this_month";
+export type BrowseTag = "trending" | "popular" | "top_rated" | "this_week" | "this_month" | "new_releases";
 
-export async function browseAnime(tag: BrowseTag): Promise<AnimeSearchResultItem[]> {
+export const BROWSE_PAGE_SIZE = 24;
+
+export interface BrowsePage {
+  items: AnimeSearchResultItem[];
+  hasNextPage: boolean;
+}
+
+export async function browseAnime(tag: BrowseTag, page = 1): Promise<BrowsePage> {
   const sortMap: Record<BrowseTag, string> = {
     trending: "TRENDING_DESC", // AniList's realtime activity metric = "popular today"
     popular: "POPULARITY_DESC",
     top_rated: "SCORE_DESC",
     this_week: "TRENDING_DESC",
-    this_month: "POPULARITY_DESC"
+    this_month: "POPULARITY_DESC",
+    new_releases: "START_DATE_DESC"
   };
   // "this week/month" narrow to the season currently airing.
   const now = new Date();
@@ -179,16 +187,38 @@ export async function browseAnime(tag: BrowseTag): Promise<AnimeSearchResultItem
     varDefs += ", $minPopularity: Int";
     variables.minPopularity = 50000;
   }
-  const data = await gql<{ Page: { media: AniListMedia[] } }>(
-    `anilist:browse:v3:${tag}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}`,
-    `query (${varDefs}) {
-      Page(page: 1, perPage: 24) {
+  if (tag === "new_releases") {
+    // Newest premieres that are actually out — exclude unaired announcements,
+    // undated provisional entries, and zero-popularity catalogue noise.
+    const fuzzyToday = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+    mediaArgs.push(
+      "status_in: [RELEASING, FINISHED]",
+      "popularity_greater: 1000",
+      `startDate_lesser: ${fuzzyToday + 1}`
+    );
+  }
+  const data = await gql<{ Page: { pageInfo: { hasNextPage: boolean }; media: AniListMedia[] } }>(
+    `anilist:browse:v4:${tag}:p${page}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}`,
+    `query (${varDefs}, $page: Int) {
+      Page(page: $page, perPage: ${BROWSE_PAGE_SIZE}) {
+        pageInfo { hasNextPage }
         media(${mediaArgs.join(", ")}) { ${MEDIA_FIELDS} }
       }
     }`,
-    variables
+    { ...variables, page }
   );
-  return data.Page.media.map(toSearchItem);
+  let media = data.Page.media;
+  if (tag === "new_releases") {
+    // AniList's startDate_lesser doesn't exclude null dates — drop undated
+    // provisional entries client-side.
+    media = media.filter((m) => m.startDate.year !== null);
+  }
+  return { items: media.map(toSearchItem), hasNextPage: data.Page.pageInfo.hasNextPage };
+}
+
+/** Back-compat helper for callers that only need the items (rankings rail). */
+export async function browseAnimeItems(tag: BrowseTag, page = 1): Promise<AnimeSearchResultItem[]> {
+  return (await browseAnime(tag, page)).items;
 }
 
 async function fetchMedia(id: number, withRelations: boolean): Promise<AniListMedia> {
