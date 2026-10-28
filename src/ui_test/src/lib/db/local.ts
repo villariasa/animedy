@@ -9,6 +9,11 @@ export interface LocalProgress {
   duration_seconds: number;
   completed: boolean;
   last_watched_at: string;
+  title_english?: string | null;
+  title_romaji?: string | null;
+  episode_number?: number;
+  episode_title?: string | null;
+  cover_image?: string | null;
 }
 
 interface CacheEntry {

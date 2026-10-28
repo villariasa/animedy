@@ -14,6 +14,7 @@
   import { displayTitle, stripHtml } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { auth } from "$lib/stores/auth.svelte";
+  import { likes } from "$lib/stores/likes.svelte";
 
   let { animeId }: { animeId: number } = $props();
 
@@ -136,6 +137,27 @@
               Watch Episode 1
             </Button>
           {/if}
+
+          <!-- Love / Like Anime Button -->
+          <Button
+            variant={likes.isLiked(anime.id) ? "default" : "outline"}
+            class="gap-2 transition-all {likes.isLiked(anime.id) ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'border-rose-500/40 text-rose-500 hover:bg-rose-500/10'}"
+            onclick={() =>
+              anime &&
+              likes.toggleLike({
+                anime_id: anime.id,
+                title_english: anime.title_english,
+                title_romaji: anime.title_romaji,
+                cover_image: anime.cover_image,
+                format: anime.format,
+                season_year: anime.season_year
+              })}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+              <path d="m9.653 16.915-.005-.003-.019-.01a20.759 20.759 0 0 1-1.16-1.107 20.373 20.373 0 0 1-3.69-4.836A7.472 7.472 0 0 1 4 7.5C4 4.462 6.462 2 9.5 2a5.498 5.498 0 0 1 4.298 2.043A5.498 5.498 0 0 1 18.5 7.5c0 1.258-.337 2.44-.925 3.46a20.373 20.373 0 0 1-3.69 4.836 20.758 20.758 0 0 1-1.16 1.107l-.02.01-.005.003h-.002a.75.75 0 0 1-.698 0l-.002-.003Z" />
+            </svg>
+            {likes.isLiked(anime.id) ? "Loved Anime" : "Love this Anime"}
+          </Button>
         </div>
       </div>
     </section>

@@ -11,6 +11,7 @@
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { auth } from "$lib/stores/auth.svelte";
+  import { likes } from "$lib/stores/likes.svelte";
 
   type MainCuratedTab = "trending" | "popular";
   type RankingTab = "top_rated" | "trending" | "this_week" | "this_month";
@@ -359,12 +360,12 @@
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
             {#each curatedItems as item, index (item.anime_id)}
               <li>
-                <button
-                  type="button"
-                  class="group flex w-full flex-col gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onclick={() => router.go(`/anime/${item.anime_id}`)}
-                >
-                  <div class="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60">
+                <div class="group relative flex w-full flex-col gap-2 rounded-xl text-left">
+                  <button
+                    type="button"
+                    class="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onclick={() => router.go(`/anime/${item.anime_id}`)}
+                  >
                     {#if item.cover_image}
                       <img
                         src={item.cover_image}
@@ -391,23 +392,43 @@
 
                     <!-- Format pill -->
                     {#if item.format}
-                      <span class="absolute top-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur">
+                      <span class="absolute bottom-2 left-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
                         {item.format}
                       </span>
                     {/if}
 
                     <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent"></div>
-                  </div>
+                  </button>
+
+                  <!-- Like / Love Button -->
+                  <button
+                    type="button"
+                    class="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/75 shadow backdrop-blur transition-transform hover:scale-110 active:scale-90 {likes.isLiked(item.anime_id) ? 'text-rose-500' : 'text-white/80 hover:text-rose-400'}"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      likes.toggleLike(item);
+                    }}
+                    title={likes.isLiked(item.anime_id) ? "Loved" : "Love this anime"}
+                    aria-label="Like anime"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+                      <path d="m9.653 16.915-.005-.003-.019-.01a20.759 20.759 0 0 1-1.16-1.107 20.373 20.373 0 0 1-3.69-4.836A7.472 7.472 0 0 1 4 7.5C4 4.462 6.462 2 9.5 2a5.498 5.498 0 0 1 4.298 2.043A5.498 5.498 0 0 1 18.5 7.5c0 1.258-.337 2.44-.925 3.46a20.373 20.373 0 0 1-3.69 4.836 20.758 20.758 0 0 1-1.16 1.107l-.02.01-.005.003h-.002a.75.75 0 0 1-.698 0l-.002-.003Z" />
+                    </svg>
+                  </button>
 
                   <div class="min-w-0">
-                    <p class="truncate text-sm font-semibold tracking-tight transition-colors group-hover:text-primary">
+                    <button
+                      type="button"
+                      class="truncate text-left text-sm font-semibold tracking-tight transition-colors hover:text-primary"
+                      onclick={() => router.go(`/anime/${item.anime_id}`)}
+                    >
                       {displayTitle(item.title_english, item.title_romaji)}
-                    </p>
+                    </button>
                     <p class="mt-0.5 text-xs text-muted-foreground">
                       {[item.format, item.season_year, item.status ? item.status.toLowerCase() : null].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                </button>
+                </div>
               </li>
             {/each}
           </ul>

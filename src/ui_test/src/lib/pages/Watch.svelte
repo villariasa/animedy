@@ -131,6 +131,22 @@
       } else if (localProgress && !localProgress.completed && localProgress.position_seconds > 0) {
         resumePosition = localProgress.position_seconds;
       }
+
+      // Immediately register in local progress so it appears in History even before playback starts
+      const ep = episodesRes?.episodes?.find((e) => e.episode_id === epId);
+      await saveLocalProgress({
+        episode_id: epId,
+        anime_id: aId,
+        position_seconds: resumePosition || (localProgress?.position_seconds ?? 0),
+        duration_seconds: localProgress?.duration_seconds ?? 1440,
+        completed: localProgress?.completed ?? false,
+        last_watched_at: new Date().toISOString(),
+        title_english: detailsRes?.anime?.title_english ?? animeTitle,
+        title_romaji: detailsRes?.anime?.title_romaji ?? animeTitle,
+        episode_number: ep?.episode_number ?? 1,
+        episode_title: ep?.title ?? `Episode ${ep?.episode_number ?? 1}`,
+        cover_image: detailsRes?.anime?.cover_image ?? ep?.thumbnail ?? null
+      }).catch(() => undefined);
     } catch (err) {
       error = err instanceof ApiError ? err.message : "Failed to load episode.";
     } finally {
@@ -148,23 +164,31 @@
   }
 
   async function saveProgress(completed = false): Promise<void> {
-    if (lastDuration > 0 && lastPosition > 0) {
-      if (auth.isLoggedIn) {
+    const pos = Math.floor(lastPosition);
+    const dur = Math.floor(lastDuration || 1440);
+    const ep = currentEpisode ?? episodes.find((e) => e.episode_id === episodeId);
+    if (auth.isLoggedIn) {
+      if (dur > 0 && pos > 0) {
         await apiPost("/api/progress/save", {
           episode_id: episodeId,
-          position_seconds: Math.floor(lastPosition),
-          duration_seconds: Math.floor(lastDuration)
-        }).catch(() => undefined);
-      } else {
-        await saveLocalProgress({
-          episode_id: episodeId,
-          anime_id: animeId,
-          position_seconds: Math.floor(lastPosition),
-          duration_seconds: Math.floor(lastDuration),
-          completed,
-          last_watched_at: new Date().toISOString()
+          position_seconds: pos,
+          duration_seconds: dur
         }).catch(() => undefined);
       }
+    } else {
+      await saveLocalProgress({
+        episode_id: episodeId,
+        anime_id: animeId,
+        position_seconds: pos,
+        duration_seconds: dur,
+        completed,
+        last_watched_at: new Date().toISOString(),
+        title_english: animeTitle,
+        title_romaji: animeTitle,
+        episode_number: ep?.episode_number ?? 1,
+        episode_title: ep?.title ?? `Episode ${ep?.episode_number ?? 1}`,
+        cover_image: ep?.thumbnail ?? null
+      }).catch(() => undefined);
     }
   }
 
