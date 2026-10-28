@@ -1,10 +1,13 @@
 <script lang="ts">
   import { ApiError } from "$lib/api/client";
-  import { buildEpisodes, getAnimeDetails } from "$lib/api/anilist";
+  import { buildEpisodes, getAnimeDetails, getEpisodeMedia } from "$lib/api/anilist";
   import type { AnimeDetails, EpisodeListItem } from "$lib/api/types";
+  import { getSkipSegments } from "$lib/api/aniskip";
+  import { getCached, putCached } from "$lib/db/local";
   import { progressKey, saveLocalProgress, getLocalProgressFor } from "$lib/db/local";
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
 
   // episodeId in the route is the episode NUMBER — streams come from embed
   // providers keyed by (anilist id, episode number). No backend, no accounts.
@@ -138,6 +141,174 @@
     }
   }
 
+  // ---- Server 1 player bridge (megaplay handle-bridge postMessage API) ----
+  // The wrapper (anichi.to.html) relays messages both ways. We use:
+  //   SKP_DATA  → sets intro/outro windows + auto-skip inside THEIR player
+  //   GET_TIME  → polls real position/duration (progress + ended detection)
+  //   SEEK      → resume where the user left off
+  // Auto-next swaps the iframe src in place, so OUR fullscreen container
+  // stays fullscreen across episodes.
+  let playerFrame = $state<HTMLIFrameElement | null>(null);
+  let skipIntroState = $state<[number, number] | null>(null);
+  let skipOutroState = $state<[number, number] | null>(null);
+  let resumePos = 0;
+  let endedFired = false;
+  let pollCount = 0;
+  let realPos = 0;
+  let realDur = 0;
+
+  // Our OWN per-anime skip data (IndexedDB) — takes priority over AniSkip,
+  // for shows AniSkip hasn't covered yet. Marked once, applies to all episodes.
+  type SkipPair = [number, number];
+  let customIntro = $state<SkipPair | null>(null);
+  let customOutro = $state<SkipPair | null>(null);
+  let markingIntro = $state<number | null>(null);
+  let markingOutro = $state<number | null>(null);
+  let skipSetupOpen = $state(false);
+
+  const effectiveIntro = $derived(customIntro ?? skipIntroState);
+  const effectiveOutro = $derived(customOutro ?? skipOutroState);
+
+  function sendToPlayer(obj: Record<string, unknown>): void {
+    playerFrame?.contentWindow?.postMessage(JSON.stringify(obj), "*");
+  }
+
+  function sendSkipData(): void {
+    sendToPlayer({
+      cmd: "SKP_DATA",
+      value: { intro: effectiveIntro ?? undefined, outro: effectiveOutro ?? undefined },
+      auto: settings.current.auto_skip_intro || settings.current.auto_skip_outro
+    });
+  }
+
+  async function saveCustomSkip(): Promise<void> {
+    await putCached(`customskip:${animeId}`, { intro: customIntro, outro: customOutro }).catch(
+      () => undefined
+    );
+    sendSkipData();
+  }
+
+  function markIntro(): void {
+    if (markingIntro === null) {
+      markingIntro = Math.floor(realPos);
+    } else {
+      const end = Math.floor(realPos);
+      if (end > markingIntro) {
+        customIntro = [markingIntro, end];
+        void saveCustomSkip();
+      }
+      markingIntro = null;
+    }
+  }
+
+  function markOutro(): void {
+    if (markingOutro === null) {
+      markingOutro = Math.floor(realPos);
+    } else {
+      const end = Math.floor(realPos);
+      if (end > markingOutro) {
+        customOutro = [markingOutro, end];
+        void saveCustomSkip();
+      }
+      markingOutro = null;
+    }
+  }
+
+  function clearCustomSkip(): void {
+    customIntro = null;
+    customOutro = null;
+    markingIntro = null;
+    markingOutro = null;
+    void saveCustomSkip();
+  }
+
+  async function saveRealProgress(pos: number, dur: number, completed: boolean): Promise<void> {
+    await saveLocalProgress({
+      episode_id: progressKey(animeId, episodeId),
+      anime_id: animeId,
+      position_seconds: Math.floor(pos),
+      duration_seconds: Math.floor(dur),
+      completed,
+      last_watched_at: new Date().toISOString(),
+      title_english: anime?.title_english ?? null,
+      title_romaji: anime?.title_romaji ?? null,
+      episode_number: episodeId,
+      episode_title: currentEpisode?.title ?? `Episode ${episodeId}`,
+      cover_image: anime?.cover_image ?? null
+    }).catch(() => undefined);
+  }
+
+  async function onEpisodeEnded(pos: number, dur: number): Promise<void> {
+    await saveRealProgress(pos, dur, true);
+    if (settings.current.auto_next && nextEpisode) {
+      // Same container, new src → fullscreen (ours) survives the switch.
+      goToEpisode(nextEpisode.episode_number);
+    }
+  }
+
+  $effect(() => {
+    void episodeId;
+    const server = selectedServer;
+    endedFired = false;
+    pollCount = 0;
+    realPos = 0;
+    realDur = 0;
+    if (server !== "embed_animekai") {
+      return;
+    }
+    const onMsg = (ev: MessageEvent) => {
+      let d: unknown = ev.data;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          return;
+        }
+      }
+      if (!d || typeof d !== "object") {
+        return;
+      }
+      const msg = d as { event?: string; time?: number; duration?: number };
+      if (msg.event === "PLAYER_READY") {
+        sendSkipData();
+        if (resumePos > 30) {
+          sendToPlayer({ cmd: "SEEK", value: resumePos });
+          resumePos = 0;
+        }
+      } else if (msg.event === "CURRENT_TIME") {
+        const time = Number(msg.time) || 0;
+        const dur = Number(msg.duration) || 0;
+        if (dur > 0 && time > 0) {
+          realPos = time;
+          realDur = dur;
+          pollCount += 1;
+          if (pollCount % 5 === 0) {
+            void saveRealProgress(time, dur, false);
+            sendSkipData();
+          }
+          if (!endedFired && dur > 120 && time >= dur - 2) {
+            endedFired = true;
+            void onEpisodeEnded(time, dur);
+          }
+        }
+      }
+    };
+    window.addEventListener("message", onMsg);
+    const poll = setInterval(() => {
+      sendToPlayer({ cmd: "GET_TIME" });
+      if (pollCount === 0) {
+        sendSkipData();
+      }
+    }, 2000);
+    return () => {
+      window.removeEventListener("message", onMsg);
+      clearInterval(poll);
+      if (realDur > 0 && realPos > 0 && !endedFired) {
+        void saveRealProgress(realPos, realDur, false);
+      }
+    };
+  });
+
   $effect(() => {
     const aId = animeId;
     let epNum = episodeId;
@@ -154,8 +325,15 @@
     loading = true;
     error = null;
     try {
+      await settings.load();
       anime = await getAnimeDetails(aId);
       episodes = buildEpisodes(anime);
+      void getEpisodeMedia(aId, anime.mal_id).then((media) => {
+        episodes = episodes.map((ep) => {
+          const info = media.get(ep.episode_number);
+          return info ? { ...ep, thumbnail: info.thumbnail ?? ep.thumbnail, title: ep.title ?? info.title } : ep;
+        });
+      });
       animixUrl = await findAnimixEpisode(epNum);
       if (anime.mal_id === null && selectedServer === "embed_animekai") {
         selectedServer = animixUrl ? "embed_animix" : "embed_videasy";
@@ -163,6 +341,27 @@
       if (selectedServer === "embed_animix" && !animixUrl) {
         selectedServer = anime.mal_id !== null ? "embed_animekai" : "embed_videasy";
       }
+      // Intro/outro windows from AniSkip for the player bridge.
+      skipIntroState = null;
+      skipOutroState = null;
+      if (anime.mal_id !== null) {
+        const segs = await getSkipSegments(
+          anime.mal_id,
+          epNum,
+          anime.episode_duration ? anime.episode_duration * 60 : 0
+        ).catch(() => []);
+        for (const seg of segs) {
+          if (seg.skip_type === "intro") skipIntroState = [seg.start_seconds, seg.end_seconds];
+          if (seg.skip_type === "outro") skipOutroState = [seg.start_seconds, seg.end_seconds];
+        }
+      }
+      const custom = await getCached<{ intro: SkipPair | null; outro: SkipPair | null }>(
+        `customskip:${aId}`
+      ).catch(() => undefined);
+      customIntro = custom?.intro ?? null;
+      customOutro = custom?.outro ?? null;
+      const existing = await getLocalProgressFor(aId, epNum).catch(() => undefined);
+      resumePos = existing && !existing.completed ? existing.position_seconds : 0;
       await registerInHistory(aId, epNum);
     } catch (err) {
       error = err instanceof ApiError ? err.message : "Failed to load episode.";
@@ -295,8 +494,52 @@
           </svg>
           Fullscreen
         </button>
+
+        {#if selectedServer === "embed_animekai"}
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {skipSetupOpen ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+            onclick={() => (skipSetupOpen = !skipSetupOpen)}
+            title="Mark intro/outro for this anime (used by auto-skip)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
+            </svg>
+            Skip Setup
+          </button>
+        {/if}
       </div>
     </div>
+
+    {#if skipSetupOpen && selectedServer === "embed_animekai"}
+      <div class="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-xs shadow-sm backdrop-blur">
+        <span class="font-semibold text-muted-foreground">Your skip data (whole series):</span>
+        <button
+          type="button"
+          class="rounded-lg px-2.5 py-1 font-medium transition-colors {markingIntro !== null ? 'animate-pulse bg-amber-400 text-amber-950' : 'border border-border/70 hover:bg-accent'}"
+          onclick={markIntro}
+          title="Click at the START of the opening, then again at the END"
+        >
+          {markingIntro !== null ? `Intro start ${markingIntro}s — click at END` : customIntro ? `Intro ${customIntro[0]}s–${customIntro[1]}s ↻` : "Mark Intro"}
+        </button>
+        <button
+          type="button"
+          class="rounded-lg px-2.5 py-1 font-medium transition-colors {markingOutro !== null ? 'animate-pulse bg-amber-400 text-amber-950' : 'border border-border/70 hover:bg-accent'}"
+          onclick={markOutro}
+          title="Click at the START of the ending, then again at the END"
+        >
+          {markingOutro !== null ? `Outro start ${markingOutro}s — click at END` : customOutro ? `Outro ${customOutro[0]}s–${customOutro[1]}s ↻` : "Mark Outro"}
+        </button>
+        {#if customIntro || customOutro}
+          <button type="button" class="rounded-lg border border-red-500/40 px-2.5 py-1 font-medium text-red-400 hover:bg-red-500/10" onclick={clearCustomSkip}>
+            Clear
+          </button>
+        {/if}
+        <span class="ml-auto text-[11px] text-muted-foreground">
+          Play the video, click at the start of the OP/ED, click again at its end — auto-skip then works on every episode.
+        </span>
+      </div>
+    {/if}
 
     <div class="relative">
       <div
@@ -323,6 +566,7 @@
                it). Server 1 is ad-free via the anichi.to.html referrer wrapper
                instead. -->
           <iframe
+            bind:this={playerFrame}
             src={serverEmbedUrls[selectedServer]}
             title="{animeTitle} - {episodeLabel}"
             class="h-full w-full border-0"
@@ -381,8 +625,8 @@
           onclick={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
           title="Previous Episode"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
-            <path d="M7.707 10.293a1 1 0 0 0 0-1.414l5-5A1 1 0 0 0 11 3H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h7a1 1 0 0 0 1.707-.707l-5-5Z" />
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
           </svg>
           <span class="hidden sm:inline">Prev</span>
         </button>
@@ -406,8 +650,8 @@
           title="Next Episode"
         >
           <span class="hidden sm:inline">Next</span>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
-            <path d="M12.293 9.707a1 1 0 0 0 0 1.414l-5 5A1 1 0 0 0 9 17h7a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H9a1 1 0 0 0-1.707.707l5 5Z" />
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-3.5 w-3.5 shrink-0" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
           </svg>
         </button>
       </div>

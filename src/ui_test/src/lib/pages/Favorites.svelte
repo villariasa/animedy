@@ -1,10 +1,50 @@
 <script lang="ts">
+  import { getAiringInfo, getTodayReleases, type AiringInfo, type TodayRelease } from "$lib/api/anilist";
+  import { getAllLocalProgress, type LocalProgress } from "$lib/db/local";
+  import { displayTitle, formatCountdown, statusLabel, statusBadgeClass } from "$lib/format";
   import { likes } from "$lib/stores/likes.svelte";
-  import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { Button } from "$lib/components/ui/button";
 
   let searchQuery = $state("");
+  let airing = $state<Map<number, AiringInfo>>(new Map());
+  let todayByAnime = $state<Map<number, TodayRelease>>(new Map());
+  let progressRows = $state<LocalProgress[]>([]);
+  let nowMs = $state(Date.now());
+
+  // Live countdown tick (per minute).
+  $effect(() => {
+    const t = setInterval(() => (nowMs = Date.now()), 60_000);
+    return () => clearInterval(t);
+  });
+
+  $effect(() => {
+    const ids = likes.items.map((i) => i.anime_id);
+    if (ids.length > 0) {
+      void getAiringInfo(ids).then((m) => (airing = m)).catch(() => undefined);
+      void getTodayReleases()
+        .then((rel) => (todayByAnime = new Map(rel.map((r) => [r.item.anime_id, r]))))
+        .catch(() => undefined);
+    }
+    void getAllLocalProgress().then((rows) => (progressRows = rows)).catch(() => undefined);
+  });
+
+  /** Highest episode the user has opened/watched for an anime (0 = not started). */
+  function watchedUpTo(animeId: number): number {
+    let max = 0;
+    for (const row of progressRows) {
+      if (row.anime_id === animeId && (row.episode_number ?? 0) > max) {
+        max = row.episode_number ?? 0;
+      }
+    }
+    return max;
+  }
+
+  /** NEW = an episode aired TODAY (real time) and the user hasn't watched it yet. */
+  function newEpisode(animeId: number): TodayRelease | null {
+    const rel = todayByAnime.get(animeId);
+    return rel && watchedUpTo(animeId) < rel.episode ? rel : null;
+  }
 
   const filteredItems = $derived(
     searchQuery.trim()
@@ -64,6 +104,9 @@
   {:else}
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {#each filteredItems as item (item.anime_id)}
+        {@const info = airing.get(item.anime_id)}
+        {@const fresh = newEpisode(item.anime_id)}
+        {@const upTo = watchedUpTo(item.anime_id)}
         <div class="group relative flex w-full min-w-0 overflow-hidden flex-col gap-2 rounded-xl text-left">
           <!-- Anime Cover Image Preview Box -->
           <button
@@ -80,9 +123,22 @@
               />
             {/if}
 
-            {#if item.format}
+            {#if fresh}
+              <span class="absolute top-2 left-2 animate-pulse rounded-md bg-rose-500 px-1.5 py-0.5 text-[10px] font-black tracking-wide text-white shadow-md">
+                NEW EP {fresh.episode}
+              </span>
+            {:else if item.format}
               <span class="absolute top-2 left-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
                 {item.format}
+              </span>
+            {/if}
+
+            {#if info?.next_airing_at}
+              <span class="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-black/80 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-2.5 w-2.5 text-amber-400" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 0 0 0-1.5h-3.25V5Z" clip-rule="evenodd" />
+                </svg>
+                EP {info.next_episode} in {formatCountdown(info.next_airing_at, nowMs)}
               </span>
             {/if}
 
@@ -112,8 +168,23 @@
             >
               {displayTitle(item.title_english, item.title_romaji)}
             </button>
-            <p class="mt-0.5 truncate text-xs text-muted-foreground">
+            <p class="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
               {[item.format, item.season_year].filter(Boolean).join(" · ")}
+              {#if info?.status}
+                <span class="shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold {statusBadgeClass(info.status)}">
+                  {statusLabel(info.status)}
+                </span>
+              {/if}
+            </p>
+            <!-- Where the user left off -->
+            <p class="mt-1 truncate text-[11px] {fresh ? 'font-semibold text-rose-400' : 'text-muted-foreground'}">
+              {#if fresh}
+                EP {fresh.episode} out — not watched yet
+              {:else if upTo > 0}
+                You're on EP {upTo}{info?.latest_episode ? ` of ${info.latest_episode}` : ""}
+              {:else}
+                Not started
+              {/if}
             </p>
           </div>
         </div>

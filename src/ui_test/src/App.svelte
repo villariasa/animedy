@@ -9,6 +9,7 @@
   import Settings from "$lib/pages/Settings.svelte";
   import Watch from "$lib/pages/Watch.svelte";
   import UndoSnackbar from "$lib/components/UndoSnackbar.svelte";
+  import NewEpisodeNotifier from "$lib/components/NewEpisodeNotifier.svelte";
   import { router } from "$lib/router.svelte";
 
   let isSearchActive = $state(false);
@@ -92,4 +93,5 @@
   </main>
 
   <UndoSnackbar />
+  <NewEpisodeNotifier />
 </div>

@@ -1,21 +1,47 @@
 <script lang="ts">
   import type { AnimeSearchResultItem } from "$lib/api/types";
+  import { getHDBanner } from "$lib/api/kitsu";
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
 
   let { items = [] }: { items: AnimeSearchResultItem[] } = $props();
 
+  // Strictly filter to items that have verified ultra-HD panoramic banner images
+  const validItems = $derived.by(() => {
+    const withBanners = items.filter((i) => Boolean(i.banner_image));
+    return withBanners.length > 0 ? withBanners : items;
+  });
+
   let currentIndex = $state(0);
   let isPaused = $state(false);
+  // Ultra-HD banner upgrades from Kitsu (anime_id → image url).
+  let hdBanners = $state<Record<number, string>>({});
+
+  $effect(() => {
+    for (const item of validItems.slice(0, 8)) {
+      const id = item.anime_id;
+      if (!(id in hdBanners)) {
+        void getHDBanner(id).then((url) => {
+          if (url) {
+            hdBanners = { ...hdBanners, [id]: url };
+          }
+        });
+      }
+    }
+  });
+
   let autoPlayTimer: ReturnType<typeof setInterval> | undefined;
 
-  const currentItem = $derived(items[currentIndex] ?? null);
+  const currentItem = $derived(validItems[currentIndex] ?? null);
+  const heroImage = $derived(
+    currentItem ? (hdBanners[currentItem.anime_id] ?? currentItem.banner_image) : null
+  );
 
   function stripHtml(html: string | null | undefined): string {
     if (!html) return "";
     return html
-      .replace(/<br\\s*\/?>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
       .replace(/<[^>]+>/g, "")
       .replace(/&quot;/g, '"')
       .replace(/&amp;/g, "&")
@@ -24,13 +50,13 @@
   }
 
   function nextSlide(): void {
-    if (items.length === 0) return;
-    currentIndex = (currentIndex + 1) % items.length;
+    if (validItems.length === 0) return;
+    currentIndex = (currentIndex + 1) % validItems.length;
   }
 
   function prevSlide(): void {
-    if (items.length === 0) return;
-    currentIndex = (currentIndex - 1 + items.length) % items.length;
+    if (validItems.length === 0) return;
+    currentIndex = (currentIndex - 1 + validItems.length) % validItems.length;
   }
 
   function goToSlide(index: number): void {
@@ -38,7 +64,7 @@
   }
 
   $effect(() => {
-    if (items.length <= 1) return;
+    if (validItems.length <= 1) return;
     autoPlayTimer = setInterval(() => {
       if (!isPaused) {
         nextSlide();
@@ -53,18 +79,27 @@
 
 {#if currentItem}
   <section
-    class="relative w-full overflow-hidden rounded-3xl border border-border/70 bg-card/60 shadow-2xl backdrop-blur-md"
+    class="relative w-full overflow-hidden rounded-3xl border border-border/70 bg-card/60 shadow-2xl"
     aria-label="Spotlight Carousel"
     onmouseenter={() => (isPaused = true)}
     onmouseleave={() => (isPaused = false)}
   >
     <!-- Background Hero Visual with Cinematic Fade Overlays -->
-    <div class="absolute inset-0 z-0">
-      {#if currentItem.banner_image || currentItem.cover_image}
+    <div class="absolute inset-0 z-0 overflow-hidden">
+      {#if heroImage}
         <img
-          src={currentItem.banner_image || currentItem.cover_image}
+          src={heroImage}
           alt={displayTitle(currentItem.title_english, currentItem.title_romaji)}
-          class="h-full w-full object-cover object-center transition-all duration-700 ease-out scale-105"
+          class="h-full w-full object-cover object-center transition-opacity duration-700 ease-out"
+          loading="eager"
+          decoding="async"
+        />
+      {:else if currentItem.cover_image}
+        <div class="absolute inset-0 bg-background/90"></div>
+        <img
+          src={currentItem.cover_image}
+          alt=""
+          class="h-full w-full object-cover blur-3xl opacity-20"
         />
       {/if}
 
@@ -115,7 +150,7 @@
         <!-- Genre Tags Row -->
         {#if currentItem.genres && currentItem.genres.length > 0}
           <div class="flex flex-wrap items-center gap-1.5 mt-2.5">
-            {#each currentItem.genres.slice(0, 3) as genre}
+            {#each currentItem.genres.slice(0, 3) as genre (genre)}
               <span class="text-xs text-white/70 font-medium">#{genre}</span>
             {/each}
             {#if currentItem.season_year}
@@ -188,7 +223,7 @@
               </svg>
             </button>
             <span class="text-xs font-mono font-bold text-white/80 px-1">
-              {currentIndex + 1} / {items.length}
+              {currentIndex + 1} / {validItems.length}
             </span>
             <button
               type="button"
@@ -205,7 +240,7 @@
 
         <!-- Vertical upcoming slides preview list -->
         <div class="flex flex-col gap-2 my-2 overflow-y-auto max-h-[340px] pr-1">
-          {#each items.slice(0, 5) as item, idx (item.anime_id)}
+          {#each validItems.slice(0, 5) as item, idx (item.anime_id)}
             <button
               type="button"
               onclick={() => goToSlide(idx)}

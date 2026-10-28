@@ -1,16 +1,16 @@
 <script lang="ts">
   import { ApiError } from "$lib/api/client";
-  import { browseAnime, searchAnime, type BrowseTag } from "$lib/api/anilist";
+  import { browseAnime, searchAnime, getTodayReleases, type BrowseTag, type TodayRelease } from "$lib/api/anilist";
   import type { AnimeSearchResultItem, ContinueWatchingItem } from "$lib/api/types";
   import ContinueWatchingCard from "$lib/components/ContinueWatchingCard.svelte";
   import HeroSpotlight from "$lib/components/HeroSpotlight.svelte";
   import CommunityShareBar from "$lib/components/CommunityShareBar.svelte";
   import { getContinueWatching } from "$lib/continuation";
-  import { displayTitle } from "$lib/format";
+  import { displayTitle, statusLabel, statusBadgeClass } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
 
-  type MainCuratedTab = "trending" | "new_releases" | "popular";
+  type MainCuratedTab = "trending" | "today" | "new_releases";
   type RankingTab = "top_rated" | "trending" | "this_week" | "this_month";
 
   const SEARCH_DEBOUNCE_MS = 400;
@@ -34,9 +34,34 @@
 
   const TAB_HEADERS: Record<MainCuratedTab, { title: string; subtitle: string }> = {
     trending: { title: "Popular Today", subtitle: "Realtime rankings from AniList activity, updated continuously" },
-    new_releases: { title: "New Releases", subtitle: "Freshly premiered anime, newest first" },
-    popular: { title: "Popular This Month", subtitle: "Most watched titles this season" }
+    today: { title: "Today Release", subtitle: "Episodes that aired today — realtime" },
+    new_releases: { title: "New Releases", subtitle: "Freshly premiered anime, newest first" }
   };
+
+  let todayMeta = $state<Map<number, TodayRelease>>(new Map());
+
+  // Dedicated Ultra-HD Hero Spotlight items (always guaranteed panoramic banners)
+  let spotlightItems = $state<AnimeSearchResultItem[]>([]);
+  let spotlightLoading = $state(false);
+
+  async function loadSpotlight(): Promise<void> {
+    spotlightLoading = true;
+    try {
+      const pageResult = await browseAnime("trending");
+      const withBanners = pageResult.items.filter((i) => Boolean(i.banner_image));
+      if (withBanners.length >= 4) {
+        spotlightItems = withBanners.slice(0, 8);
+      } else {
+        const popular = await browseAnime("popular");
+        const popularWithBanners = popular.items.filter((i) => Boolean(i.banner_image));
+        spotlightItems = [...withBanners, ...popularWithBanners].slice(0, 8);
+      }
+    } catch {
+      spotlightItems = [];
+    } finally {
+      spotlightLoading = false;
+    }
+  }
 
   // Right sidebar ranking tab (Top Rated / Trending)
   let rankingTab = $state<RankingTab>("top_rated");
@@ -75,8 +100,7 @@
   }
 
   function curatedTag(tab: MainCuratedTab): BrowseTag {
-    // "Popular This Month" = current season's popularity, not all-time.
-    return tab === "popular" ? "this_month" : tab;
+    return tab === "today" ? "trending" : tab;
   }
 
   async function loadCurated(tab: MainCuratedTab): Promise<void> {
@@ -84,6 +108,13 @@
     curatedError = null;
     curatedPage = 1;
     try {
+      if (tab === "today") {
+        const releases = await getTodayReleases();
+        todayMeta = new Map(releases.map((r) => [r.item.anime_id, r]));
+        curatedItems = releases.map((r) => r.item);
+        curatedHasMore = false;
+        return;
+      }
       const pageResult = await browseAnime(curatedTag(tab));
       curatedItems = pageResult.items;
       // AniList reports whether more pages exist — reliable no matter how many
@@ -126,6 +157,10 @@
   }
 
   $effect(() => {
+    void loadSpotlight();
+  });
+
+  $effect(() => {
     void loadCurated(activeTab);
   });
 
@@ -149,9 +184,11 @@
 <div class="flex flex-col gap-8">
   <!-- Hero Spotlight Carousel (Unique dual-pane stage with upcoming rail) -->
   {#if query.trim().length < 2}
-    {#if curatedItems.length > 0}
-      <HeroSpotlight items={curatedItems.slice(0, 8)} />
-    {:else if curatedLoading}
+    {#if spotlightItems.length > 0}
+      <HeroSpotlight items={spotlightItems} />
+    {:else if curatedItems.filter((i) => Boolean(i.banner_image)).length > 0}
+      <HeroSpotlight items={curatedItems.filter((i) => Boolean(i.banner_image)).slice(0, 8)} />
+    {:else if spotlightLoading || curatedLoading}
       <div class="relative h-[440px] lg:h-[500px] w-full animate-pulse rounded-3xl border border-border/60 bg-card/40 p-8 flex flex-col justify-end">
         <div class="h-6 w-32 rounded-full bg-muted/60 mb-4"></div>
         <div class="h-10 w-2/3 rounded-xl bg-muted/60 mb-3"></div>
@@ -357,6 +394,17 @@
 
             <button
               type="button"
+              class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors {activeTab === 'today' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+              onclick={() => (activeTab = "today")}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="h-3.5 w-3.5 shrink-0" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+              Today Release
+            </button>
+
+            <button
+              type="button"
               class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors {activeTab === 'new_releases' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => (activeTab = "new_releases")}
             >
@@ -364,29 +412,6 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
               </svg>
               New Releases
-            </button>
-
-            <button
-              type="button"
-              class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors {activeTab === 'popular' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-              onclick={() => (activeTab = "popular")}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.75"
-                stroke="currentColor"
-                class="h-3.5 w-3.5 shrink-0"
-                aria-hidden="true"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"
-                />
-              </svg>
-              Popular This Month
             </button>
           </div>
         </div>
@@ -423,24 +448,38 @@
                     {/if}
 
                     <!-- Rank badge -->
-                    <span
-                      class="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold shadow-md backdrop-blur {
-                        activeTab !== 'new_releases' && index === 0
-                          ? 'bg-amber-400 text-amber-950 ring-2 ring-amber-200'
-                          : activeTab !== 'new_releases' && index === 1
-                          ? 'bg-slate-200 text-slate-900 ring-2 ring-slate-100'
-                          : activeTab !== 'new_releases' && index === 2
-                          ? 'bg-amber-700 text-amber-100 ring-2 ring-amber-600'
-                          : 'bg-black/75 text-white'
-                      }"
-                    >
-                      {activeTab === 'new_releases' ? 'NEW' : `#${index + 1}`}
-                    </span>
+                    {#if activeTab === 'today'}
+                      {@const rel = todayMeta.get(item.anime_id)}
+                      <span class="absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-black tracking-wide shadow-md backdrop-blur {rel?.tag === 'new_anime' ? 'bg-green-400 text-green-950' : rel?.tag === 'new_season' ? 'bg-amber-400 text-amber-950' : 'bg-primary text-primary-foreground'}">
+                        {rel?.tag === 'new_anime' ? 'NEW ANIME' : rel?.tag === 'new_season' ? 'NEW SEASON' : 'NEW EPISODE'}
+                      </span>
+                    {:else}
+                      <span
+                        class="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold shadow-md backdrop-blur {
+                          activeTab !== 'new_releases' && index === 0
+                            ? 'bg-amber-400 text-amber-950 ring-2 ring-amber-200'
+                            : activeTab !== 'new_releases' && index === 1
+                            ? 'bg-slate-200 text-slate-900 ring-2 ring-slate-100'
+                            : activeTab !== 'new_releases' && index === 2
+                            ? 'bg-amber-700 text-amber-100 ring-2 ring-amber-600'
+                            : 'bg-black/75 text-white'
+                        }"
+                      >
+                        {activeTab === 'new_releases' ? 'NEW' : `#${index + 1}`}
+                      </span>
+                    {/if}
 
                     <!-- Format pill -->
                     {#if item.format}
                       <span class="absolute bottom-2 left-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
                         {item.format}
+                      </span>
+                    {/if}
+
+                    <!-- Latest released episode pill -->
+                    {#if item.latest_episode && item.latest_episode > 0}
+                      <span class="absolute bottom-2 right-2 rounded-md bg-primary/90 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-primary-foreground shadow backdrop-blur">
+                        EP {item.latest_episode}
                       </span>
                     {/if}
 
@@ -480,7 +519,12 @@
                         </span>
                         <span>·</span>
                       {/if}
-                      {[item.format, item.season_year, item.status ? item.status.toLowerCase().replace(/_/g, " ") : null].filter(Boolean).join(" · ")}
+                      {[item.format, item.season_year].filter(Boolean).join(" · ")}
+                      {#if item.status}
+                        <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold {statusBadgeClass(item.status)}">
+                          {statusLabel(item.status)}
+                        </span>
+                      {/if}
                     </p>
                   </div>
                 </div>
@@ -644,7 +688,9 @@
                           <span>{item.season_year}</span>
                         {/if}
                         {#if item.status}
-                          <span class="capitalize">· {item.status.toLowerCase()}</span>
+                          <span class="rounded px-1 py-0.5 text-[10px] font-semibold {statusBadgeClass(item.status)}">
+                            {statusLabel(item.status)}
+                          </span>
                         {/if}
                       </div>
                     </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ApiError } from "$lib/api/client";
-  import { buildEpisodes, getAnimeDetails, getFranchise } from "$lib/api/anilist";
+  import { buildEpisodes, getAnimeDetails, getEpisodeMedia, getFranchise } from "$lib/api/anilist";
   import type { AnimeDetails, EpisodeListItem, FranchiseEntry } from "$lib/api/types";
   import { Button } from "$lib/components/ui/button";
   import { getLocalWatchNext, type LocalWatchNext } from "$lib/continuation";
@@ -92,6 +92,12 @@
     try {
       anime = await getAnimeDetails(id);
       episodes = buildEpisodes(anime);
+      void getEpisodeMedia(id, anime.mal_id).then((media) => {
+        episodes = episodes.map((ep) => {
+          const info = media.get(ep.episode_number);
+          return info ? { ...ep, thumbnail: info.thumbnail ?? ep.thumbnail, title: ep.title ?? info.title } : ep;
+        });
+      });
       franchise = await getFranchise(id).catch(() => []);
       watchNext = await getLocalWatchNext(id, anime.episode_count, franchise).catch(() => null);
     } catch (err) {
@@ -113,25 +119,45 @@
   <div class="flex flex-col gap-8">
     <!-- Header Banner Image Preview -->
     {#if anime.banner_image}
-      <div class="relative max-h-72 w-full overflow-hidden rounded-2xl shadow-lg ring-1 ring-border/40">
+      <div class="relative h-44 sm:h-64 lg:h-80 w-full overflow-hidden rounded-3xl shadow-xl ring-1 ring-border/40">
         <img src={anime.banner_image} alt="" class="h-full w-full object-cover" />
-        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent"></div>
       </div>
     {/if}
 
-    <section class="flex flex-col gap-6 sm:flex-row">
-      <!-- Poster Box Preview with Glow and Quality Tag -->
-      {#if anime.cover_image}
-        <div class="relative w-44 shrink-0 overflow-hidden rounded-xl shadow-xl ring-1 ring-border/60 group">
-          <img src={anime.cover_image} alt="" class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-          {#if anime.format}
-            <span class="absolute top-2 left-2 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
-              {anime.format}
-            </span>
-          {/if}
-        </div>
-      {/if}
-      <div class="min-w-0 flex-1">
+    <!-- Anime Detail Overview Stage with Atmospheric Blurred Backdrop -->
+    <section class="relative overflow-hidden rounded-3xl border border-border/70 bg-card/50 p-5 sm:p-7 lg:p-9 shadow-2xl backdrop-blur-xl">
+      <!-- Ambient blurred backdrop filling the entire details card space -->
+      <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        {#if anime.banner_image || anime.cover_image}
+          <img
+            src={anime.banner_image || anime.cover_image}
+            alt=""
+            class="h-full w-full object-cover blur-3xl opacity-25 scale-125"
+            aria-hidden="true"
+          />
+        {/if}
+        <div class="absolute inset-0 bg-gradient-to-b from-background/70 via-background/90 to-background"></div>
+      </div>
+
+      <div class="relative z-10 flex flex-col sm:flex-row gap-6 sm:gap-8 items-start">
+        <!-- True 2:3 Aspect Ratio Anime Poster (Never squished or cropped) -->
+        {#if anime.cover_image}
+          <div class="relative w-48 sm:w-56 md:w-64 shrink-0 aspect-[2/3] overflow-hidden rounded-2xl shadow-2xl ring-1 ring-white/10 group self-center sm:self-start">
+            <img
+              src={anime.cover_image}
+              alt={title}
+              class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+            {#if anime.format}
+              <span class="absolute top-2.5 left-2.5 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur shadow">
+                {anime.format}
+              </span>
+            {/if}
+          </div>
+        {/if}
+
+        <div class="min-w-0 flex-1">
         <h2 class="text-3xl font-bold tracking-tight">{title}</h2>
         <p class="mt-1 text-sm text-muted-foreground">
           {[anime.title_romaji, anime.title_native].filter((t) => t && t !== title).join(" · ")}
@@ -189,6 +215,7 @@
           </Button>
         </div>
       </div>
+      </div>
     </section>
 
     {#if watchNext}
@@ -225,7 +252,10 @@
                 onclick={() => router.go(`/anime/${entry.anime_id}`)}
               >
                 <span class="text-xs text-muted-foreground">
-                  #{entry.sequence_order ?? "?"} · {entry.format ?? ""}
+                  #{entry.sequence_order ?? "?"} · {[entry.format, entry.start_date?.slice(0, 4)].filter(Boolean).join(" · ")}
+                  {#if entry.status === "NOT_YET_RELEASED" || (!entry.start_date && entry.status !== "FINISHED" && entry.status !== "RELEASING")}
+                    <span class="ml-1 rounded bg-amber-500/15 px-1 py-0.5 text-[10px] font-bold text-amber-400">UPCOMING</span>
+                  {/if}
                 </span>
                 <span class="line-clamp-2 text-sm font-medium">
                   {displayTitle(entry.title_english, entry.title_romaji)}
@@ -404,7 +434,7 @@
                     <span class="rounded bg-primary/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary">
                       Episode {ep.episode_number}
                     </span>
-                    <span class="text-xs text-muted-foreground">Preview Available</span>
+                    {#if ep.thumbnail}<span class="text-xs text-muted-foreground">Preview Available</span>{/if}
                   </div>
                   <p class="mt-1.5 truncate text-base font-semibold text-foreground transition-colors group-hover:text-primary">
                     {ep.title && ep.title !== `Episode ${ep.episode_number}` ? ep.title : `Episode ${ep.episode_number}`}

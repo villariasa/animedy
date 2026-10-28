@@ -46,3 +46,41 @@ export function formatTime(seconds: number): string {
   }
   return label;
 }
+
+/** Human status labels: RELEASING → "Ongoing", FINISHED → "Finished Airing". */
+export function statusLabel(status: string | null | undefined): string {
+  const map: Record<string, string> = {
+    RELEASING: "Ongoing",
+    FINISHED: "Finished Airing",
+    NOT_YET_RELEASED: "Upcoming",
+    CANCELLED: "Cancelled",
+    HIATUS: "On Hiatus"
+  };
+  return status ? (map[status] ?? status) : "";
+}
+
+/** Tailwind classes for the colored status tag. */
+export function statusBadgeClass(status: string | null | undefined): string {
+  const map: Record<string, string> = {
+    RELEASING: "bg-green-500/15 text-green-400",
+    FINISHED: "bg-sky-500/15 text-sky-400",
+    NOT_YET_RELEASED: "bg-amber-500/15 text-amber-400",
+    CANCELLED: "bg-red-500/15 text-red-400",
+    HIATUS: "bg-orange-500/15 text-orange-400"
+  };
+  return (status && map[status]) || "bg-muted text-muted-foreground";
+}
+
+/** "2d 5h" / "4h 12m" / "36m" countdown text from a unix timestamp. */
+export function formatCountdown(unixSeconds: number, nowMs: number): string {
+  let label = "soon";
+  const diff = unixSeconds * 1000 - nowMs;
+  if (diff > 0) {
+    const m = Math.floor(diff / 60000);
+    const d = Math.floor(m / 1440);
+    const h = Math.floor((m % 1440) / 60);
+    const mm = m % 60;
+    label = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${mm}m` : `${mm}m`;
+  }
+  return label;
+}

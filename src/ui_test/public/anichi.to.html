@@ -25,6 +25,15 @@
         frame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
         frame.setAttribute("allowfullscreen", "");
         document.body.appendChild(frame);
+        // Relay the player's postMessage bridge both ways:
+        // player → our app (events), our app → player (commands).
+        window.addEventListener("message", (ev) => {
+          if (ev.source === frame.contentWindow) {
+            window.parent.postMessage(ev.data, "*");
+          } else if (ev.source === window.parent) {
+            frame.contentWindow.postMessage(ev.data, "*");
+          }
+        });
       } else {
         document.body.textContent = "Missing stream parameters.";
       }

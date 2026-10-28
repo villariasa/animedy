@@ -30,7 +30,9 @@ const MEDIA_FIELDS = `
   description
   coverImage { extraLarge large }
   bannerImage
-  nextAiringEpisode { episode }
+  nextAiringEpisode { episode airingAt }
+  countryOfOrigin
+  isAdult
   averageScore
   popularity
   genres
@@ -54,7 +56,9 @@ interface AniListMedia {
   averageScore: number | null;
   popularity: number | null;
   genres: string[] | null;
-  nextAiringEpisode: { episode: number } | null;
+  nextAiringEpisode: { episode: number; airingAt: number } | null;
+  countryOfOrigin: string | null;
+  isAdult: boolean | null;
   relations?: { edges: Array<{ relationType: string; node: AniListMedia }> };
 }
 
@@ -102,7 +106,8 @@ function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
     season_year: m.seasonYear,
     description: m.description,
     score: m.averageScore,
-    genres: m.genres ?? []
+    genres: m.genres ?? [],
+    latest_episode: m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : m.episodes
   };
 }
 
@@ -331,7 +336,7 @@ function startTimestamp(m: AniListMedia): number {
  * (movies/OVAs/spin-offs) appended after. Bounded + cached per anime id.
  */
 export async function getFranchise(id: number): Promise<FranchiseEntry[]> {
-  const cacheKey = `anilist:franchise:${id}`;
+  const cacheKey = `anilist:franchise:v3:${id}`;
   const cached = await getCached<FranchiseEntry[]>(cacheKey).catch(() => undefined);
   if (cached !== undefined) {
     return cached;
@@ -374,14 +379,18 @@ export async function getFranchise(id: number): Promise<FranchiseEntry[]> {
       }
     }
   }
-  chain.sort((a, b) => startTimestamp(a) - startTimestamp(b));
+  // ONE chronological timeline: main chain + movies/OVAs/side stories all
+  // sorted by premiere date (undated entries sink to the end).
+  const all = chain.concat(side.filter((s) => !seen.has(s.id)));
+  all.sort((a, b) => startTimestamp(a) - startTimestamp(b));
 
-  const entries: FranchiseEntry[] = chain.concat(side.filter((s) => !seen.has(s.id))).map((m, i) => ({
+  const entries: FranchiseEntry[] = all.map((m, i) => ({
     anime_id: m.id,
     anilist_id: m.id,
     title_romaji: m.title.romaji,
     title_english: m.title.english,
     format: (m.format as AnimeFormat) ?? null,
+    status: (m.status as AnimeStatus) ?? null,
     season_label: deriveSeasonLabel(m, i),
     arc_name: null,
     sequence_order: i + 1,
@@ -390,4 +399,165 @@ export async function getFranchise(id: number): Promise<FranchiseEntry[]> {
   }));
   await putCached(cacheKey, entries).catch(() => undefined);
   return entries;
+}
+
+// ---------- Airing data (Today Release tab, liked-anime notifications) ----------
+
+export type ReleaseTag = "new_episode" | "new_anime" | "new_season";
+
+export interface TodayRelease {
+  item: AnimeSearchResultItem;
+  episode: number;
+  airingAt: number;
+  tag: ReleaseTag;
+}
+
+function classifyRelease(episode: number, m: AniListMedia): ReleaseTag {
+  let tag: ReleaseTag = "new_episode";
+  if (episode === 1) {
+    const title = `${m.title.english ?? ""} ${m.title.romaji ?? ""}`;
+    tag = /season|part\s*\d|2nd|3rd|[4-9]th|final|cour/i.test(title) ? "new_season" : "new_anime";
+  }
+  return tag;
+}
+
+/** Episodes that aired TODAY (local midnight → now), Japanese anime only. */
+export async function getTodayReleases(): Promise<TodayRelease[]> {
+  const now = new Date();
+  const dayStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
+  const dayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  const data = await gql<{ Page: { airingSchedules: Array<{ episode: number; airingAt: number; media: AniListMedia }> } }>(
+    `anilist:today:${dayKey}`,
+    `query ($start: Int, $end: Int) {
+      Page(page: 1, perPage: 50) {
+        airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME_DESC) {
+          episode
+          airingAt
+          media { ${MEDIA_FIELDS} }
+        }
+      }
+    }`,
+    { start: dayStart, end: Math.floor(Date.now() / 1000) }
+  );
+  const byAnime = new Map<number, TodayRelease>();
+  for (const s of data.Page.airingSchedules) {
+    const m = s.media;
+    if (m.countryOfOrigin !== "JP" || m.isAdult || m.format === "MUSIC") {
+      continue;
+    }
+    const existing = byAnime.get(m.id);
+    if (!existing || s.episode > existing.episode) {
+      byAnime.set(m.id, {
+        item: toSearchItem(m),
+        episode: s.episode,
+        airingAt: s.airingAt,
+        tag: classifyRelease(s.episode, m)
+      });
+    }
+  }
+  return [...byAnime.values()].sort((x, y) => y.airingAt - x.airingAt);
+}
+
+export interface AiringInfo {
+  id: number;
+  status: AnimeStatus | null;
+  latest_episode: number | null;
+  next_episode: number | null;
+  next_airing_at: number | null;
+}
+
+/** Batch airing/status info for a set of anime ids (liked list). */
+export async function getAiringInfo(ids: number[]): Promise<Map<number, AiringInfo>> {
+  const map = new Map<number, AiringInfo>();
+  if (ids.length > 0) {
+    const data = await gql<{ Page: { media: AniListMedia[] } }>(
+      `anilist:airing:${[...ids].sort((a, b) => a - b).join(",")}`,
+      `query ($ids: [Int]) {
+        Page(page: 1, perPage: 50) {
+          media(id_in: $ids, type: ANIME) { id status episodes nextAiringEpisode { episode airingAt } }
+        }
+      }`,
+      { ids: ids.slice(0, 50) }
+    );
+    for (const m of data.Page.media) {
+      map.set(m.id, {
+        id: m.id,
+        status: (m.status as AnimeStatus) ?? null,
+        latest_episode: m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : m.episodes,
+        next_episode: m.nextAiringEpisode?.episode ?? null,
+        next_airing_at: m.nextAiringEpisode?.airingAt ?? null
+      });
+    }
+  }
+  return map;
+}
+
+/** Per-episode thumbnails + titles. Primary: AniList streamingEpisodes
+ * (Crunchyroll). Fallback: Jikan /videos/episodes (MAL episode stills) for
+ * the many shows AniList hasn't indexed. */
+export async function getEpisodeMedia(
+  id: number,
+  malId: number | null = null
+): Promise<Map<number, { thumbnail: string | null; title: string | null }>> {
+  const map = new Map<number, { thumbnail: string | null; title: string | null }>();
+  try {
+    const data = await gql<{ Media: { streamingEpisodes: Array<{ title: string | null; thumbnail: string | null }> } }>(
+      `anilist:epthumbs:${id}`,
+      `query ($id: Int) { Media(id: $id, type: ANIME) { streamingEpisodes { title thumbnail } } }`,
+      { id }
+    );
+    const eps = data.Media.streamingEpisodes ?? [];
+    for (let i = 0; i < eps.length; i += 1) {
+      const raw = eps[i];
+      if (!raw) continue;
+      const m = /episode\s*(\d+)/i.exec(raw.title ?? "");
+      const num = m ? parseInt(m[1] ?? "", 10) : i + 1;
+      if (num > 0 && !map.has(num)) {
+        map.set(num, {
+          thumbnail: raw.thumbnail,
+          title: raw.title ? raw.title.replace(/^episode\s*\d+\s*[-–—:]\s*/i, "") : null
+        });
+      }
+    }
+  } catch {
+    // fall through to Jikan
+  }
+
+  if (map.size === 0 && malId !== null) {
+    const cacheKey = `jikan:epthumbs:${malId}`;
+    try {
+      interface JikanEpVideo {
+        episode: string | null;
+        title: string | null;
+        images: { jpg: { image_url: string | null } } | null;
+      }
+      const collected: JikanEpVideo[] = [];
+      for (let page = 1; page <= 2; page += 1) {
+        const res = await fetch(`https://api.jikan.moe/v4/anime/${malId}/videos/episodes?page=${page}`);
+        if (!res.ok) break;
+        const payload = (await res.json()) as {
+          data: JikanEpVideo[];
+          pagination?: { has_next_page?: boolean };
+        };
+        collected.push(...payload.data);
+        if (!payload.pagination?.has_next_page) break;
+      }
+      for (const ep of collected) {
+        const m = /episode\s*(\d+)/i.exec(ep.episode ?? "");
+        const num = m ? parseInt(m[1] ?? "", 10) : 0;
+        if (num > 0 && !map.has(num)) {
+          map.set(num, { thumbnail: ep.images?.jpg?.image_url ?? null, title: ep.title });
+        }
+      }
+      if (map.size > 0) {
+        await putCached(cacheKey, [...map.entries()]).catch(() => undefined);
+      }
+    } catch {
+      const cached = await getCached<Array<[number, { thumbnail: string | null; title: string | null }]>>(cacheKey).catch(() => undefined);
+      if (cached) {
+        for (const [k, v] of cached) map.set(k, v);
+      }
+    }
+  }
+  return map;
 }

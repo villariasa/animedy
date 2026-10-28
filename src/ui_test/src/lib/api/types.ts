@@ -61,6 +61,7 @@ export interface AnimeSearchResultItem {
   description?: string | null;
   score?: number | null;
   genres?: string[];
+  latest_episode?: number | null;
 }
 
 export interface AnimeSearchResponse {
@@ -121,6 +122,7 @@ export interface AnimeDetailsResponse {
 
 /** Mirrors `FranchiseEntry` in src/animedy_v1/interfaces/api.ts. */
 export interface FranchiseEntry {
+  status?: AnimeStatus | null;
   anime_id: number;
   anilist_id: number | null;
   title_romaji: string | null;
