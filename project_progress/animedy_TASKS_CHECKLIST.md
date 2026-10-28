@@ -1,6 +1,6 @@
 # Animedy — Continuous Anime Watching Platform: Task Checklist
 
-**Project path:** `src/animedy_v1/` · **PRD:** `PRD.md` · **Status:** In progress — Phase 4 complete
+**Project path:** `src/animedy_v1/` · **PRD:** `PRD.md` · **Status:** COMPLETE — all 6 phases done (2026-10-28)
 
 ## Phase 1: Database & Schema
 - [x] T1.1 — Create MariaDB DDL for all 8 tables (`users`, `user_settings`, `anime`, `anime_relations`, `episodes`, `skip_timestamps`, `watch_progress`, `watch_state`) in `src/animedy_v1/queries/ddl.sql`
@@ -36,11 +36,11 @@
 - [x] T5.4 — Player component: HTML5/HLS, all controls (play/seek/volume/subs/quality/speed/fullscreen/PiP/prev/next/episode drawer), keyboard shortcuts, mobile controls
 - [x] T5.5 — Player automation: autoplay, auto-next countdown overlay with cancel, auto/manual skip intro-outro (`$effect` on currentTime), resume + 5s heartbeat, auto-fullscreen + mobile auto-rotate
 - [x] T5.6 — End-of-series "What's Next?" overlay with Watch Next button
-- [ ] T5.7 — IndexedDB layer: guest progress/settings, offline cache, merge-on-login (newest `last_watched_at` wins)
-- [ ] T5.8 — Settings page (player prefs, automation toggles, metadata/skip source selectors) + History page
+- [x] T5.7 — IndexedDB layer: guest progress/settings, offline cache, merge-on-login (newest `last_watched_at` wins)
+- [x] T5.8 — Settings page (player prefs, automation toggles, metadata/skip source selectors) + History page
 
 ## Phase 6: Testing & Validation
-- [ ] T6.1 — Jest/Supertest: auth, settings, metadata (mocked AniList/Jikan fixtures: Bleach/Naruto/AoT), skip, progress endpoints — success/validation/auth-failure each
-- [ ] T6.2 — Unit tests: continuation-engine priority order + franchise ordering + fallback chain
-- [ ] T6.3 — Svelte component tests: player controls, countdown, skip-button windows, Continue Watching card math
-- [ ] T6.4 — ESLint + TypeScript strict pass; verify Swagger UI loads all 20 JSON definitions
+- [x] T6.1 — Jest/Supertest: auth, settings, metadata (mocked AniList/Jikan fixtures: Bleach/Naruto/AoT), skip, progress endpoints — success/validation/auth-failure each
+- [x] T6.2 — Unit tests: continuation-engine priority order + franchise ordering + fallback chain
+- [x] T6.3 — Svelte component tests: player controls, countdown, skip-button windows, Continue Watching card math
+- [x] T6.4 — ESLint + TypeScript strict pass; verify Swagger UI loads all 20 JSON definitions

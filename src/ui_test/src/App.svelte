@@ -2,7 +2,9 @@
   import { Button } from "$lib/components/ui/button";
   import AnimeDetail from "$lib/pages/AnimeDetail.svelte";
   import Home from "$lib/pages/Home.svelte";
+  import History from "$lib/pages/History.svelte";
   import Placeholder from "$lib/pages/Placeholder.svelte";
+  import Settings from "$lib/pages/Settings.svelte";
   import Watch from "$lib/pages/Watch.svelte";
   import { router } from "$lib/router.svelte";
   import { auth } from "$lib/stores/auth.svelte";
@@ -81,9 +83,9 @@
     {:else if router.current.name === "watch"}
       <Watch animeId={router.current.animeId} episodeId={router.current.episodeId} />
     {:else if router.current.name === "history"}
-      <Placeholder title="History" task="T5.8" />
+      <History />
     {:else if router.current.name === "settings"}
-      <Placeholder title="Settings" task="T5.8" />
+      <Settings />
     {:else}
       <Placeholder title="Not found" task="a future task" />
     {/if}

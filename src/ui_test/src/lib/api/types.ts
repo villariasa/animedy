@@ -259,3 +259,26 @@ export type SettingsSaveRequest = Partial<SettingsPayload>;
 export interface SettingsSaveResponse {
   settings: SettingsPayload;
 }
+
+/** Mirrors `HistoryListItem` in src/animedy_v1/interfaces/api.ts. */
+export interface HistoryListItem {
+  episode_id: number;
+  anime_id: number;
+  title_romaji: string | null;
+  title_english: string | null;
+  episode_number: number;
+  episode_title: string | null;
+  completed: boolean;
+  last_watched_at: string;
+}
+
+export interface HistoryCompletedCount {
+  anime_id: number;
+  completed_episodes: number;
+}
+
+export interface HistoryListResponse {
+  items: HistoryListItem[];
+  total: number;
+  completed_counts: HistoryCompletedCount[];
+}

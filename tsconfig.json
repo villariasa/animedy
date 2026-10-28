@@ -15,6 +15,7 @@
     "sourceMap": true,
     "verbatimModuleSyntax": false,
     "noUncheckedIndexedAccess": true,
+    "isolatedModules": true,
     "allowJs": false
   },
   "include": ["src/**/*.ts"],

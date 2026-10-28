@@ -1,5 +1,6 @@
 <script lang="ts">
   import { apiPost, ApiError } from "$lib/api/client";
+  import { apiPostCached } from "$lib/api/cached";
   import type {
     AnimeDetails,
     AnimeDetailsResponse,
@@ -50,11 +51,11 @@
     episodes = [];
     watchNext = null;
     try {
-      const details = await apiPost<AnimeDetailsResponse>("/api/anime/details", { anime_id: id });
+      const details = await apiPostCached<AnimeDetailsResponse>("/api/anime/details", { anime_id: id });
       anime = details.anime;
       const [franchiseRes, episodesRes] = await Promise.all([
-        apiPost<AnimeFranchiseResponse>("/api/anime/franchise", { anime_id: id }).catch(() => null),
-        apiPost<EpisodesListResponse>("/api/episodes/list", { anime_id: id }).catch(() => null)
+        apiPostCached<AnimeFranchiseResponse>("/api/anime/franchise", { anime_id: id }).catch(() => null),
+        apiPostCached<EpisodesListResponse>("/api/episodes/list", { anime_id: id }).catch(() => null)
       ]);
       franchise = franchiseRes?.entries ?? [];
       episodes = episodesRes?.episodes ?? [];
