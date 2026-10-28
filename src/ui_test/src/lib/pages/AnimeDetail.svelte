@@ -14,6 +14,7 @@
   let franchise = $state<FranchiseEntry[]>([]);
   let episodes = $state<EpisodeListItem[]>([]);
   let watchNext = $state<LocalWatchNext | null>(null);
+  let isDescriptionExpanded = $state(false);
   let error = $state<string | null>(null);
   let loading = $state(true);
 
@@ -174,9 +175,20 @@
           </p>
         {/if}
         {#if anime.description}
-          <p class="mt-4 max-w-prose whitespace-pre-line text-sm leading-relaxed text-foreground/90">
-            {stripHtml(anime.description)}
-          </p>
+          <div class="mt-3.5">
+            <p class="max-w-prose whitespace-pre-line text-sm leading-relaxed text-foreground/90 transition-all {isDescriptionExpanded ? '' : 'line-clamp-3 sm:line-clamp-4'}">
+              {stripHtml(anime.description)}
+            </p>
+            {#if stripHtml(anime.description).length > 180}
+              <button
+                type="button"
+                onclick={() => (isDescriptionExpanded = !isDescriptionExpanded)}
+                class="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80 transition-colors focus:outline-none"
+              >
+                {isDescriptionExpanded ? "Show less ▴" : "Read full synopsis ▾"}
+              </button>
+            {/if}
+          </div>
         {/if}
 
         <!-- Quick Action Buttons -->
@@ -383,7 +395,7 @@
       {:else}
         <ul class="divide-y divide-border/50 rounded-xl border border-border bg-card/40 backdrop-blur">
           {#each displayedEpisodes as ep (ep.episode_id)}
-            {@const previewImg = ep.thumbnail || anime.banner_image || anime.cover_image}
+            {@const previewImg = ep.thumbnail}
             <li>
               <button
                 type="button"

@@ -31,6 +31,7 @@ const MEDIA_FIELDS = `
   coverImage { extraLarge large }
   bannerImage
   nextAiringEpisode { episode airingAt }
+  trailer { id site }
   countryOfOrigin
   isAdult
   averageScore
@@ -57,6 +58,7 @@ interface AniListMedia {
   popularity: number | null;
   genres: string[] | null;
   nextAiringEpisode: { episode: number; airingAt: number } | null;
+  trailer: { id: string | null; site: string | null } | null;
   countryOfOrigin: string | null;
   isAdult: boolean | null;
   relations?: { edges: Array<{ relationType: string; node: AniListMedia }> };
@@ -107,7 +109,11 @@ function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
     description: m.description,
     score: m.averageScore,
     genres: m.genres ?? [],
-    latest_episode: m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : m.episodes
+    latest_episode: m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : m.episodes,
+    trailer_thumbnail:
+      m.trailer?.site === "youtube" && m.trailer.id
+        ? `https://img.youtube.com/vi/${m.trailer.id}/maxresdefault.jpg`
+        : null
   };
 }
 

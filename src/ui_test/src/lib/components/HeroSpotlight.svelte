@@ -4,6 +4,7 @@
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
+  import { ambience } from "$lib/stores/ambience.svelte";
 
   let { items = [] }: { items: AnimeSearchResultItem[] } = $props();
 
@@ -34,9 +35,46 @@
   let autoPlayTimer: ReturnType<typeof setInterval> | undefined;
 
   const currentItem = $derived(validItems[currentIndex] ?? null);
-  const heroImage = $derived(
-    currentItem ? (hdBanners[currentItem.anime_id] ?? currentItem.banner_image) : null
-  );
+
+  // Candidate art per item, best-quality first; images that 404 get skipped.
+  let failedImages = $state<Record<string, boolean>>({});
+
+  function heroCandidates(item: AnimeSearchResultItem): string[] {
+    return [hdBanners[item.anime_id], item.trailer_thumbnail, item.banner_image, item.cover_image]
+      .filter((u): u is string => Boolean(u))
+      .filter((u) => !failedImages[u]);
+  }
+
+  // Each slide claims a DIFFERENT image: earlier slides reserve their art, so
+  // seasons sharing a franchise banner fall through to their own trailer art.
+  const heroImageByIndex = $derived.by(() => {
+    const used: Record<string, boolean> = {};
+    return validItems.map((item) => {
+      const candidates = heroCandidates(item);
+      const pick = candidates.find((u) => !used[u]) ?? candidates[0] ?? null;
+      if (pick) {
+        used[pick] = true;
+      }
+      return pick;
+    });
+  });
+
+  const heroImage = $derived(heroImageByIndex[currentIndex] ?? null);
+
+  // Drive the full-page ambient background from the active slide; clear it
+  // when the carousel unmounts (other pages / active search).
+  $effect(() => {
+    ambience.image = heroImage;
+    return () => {
+      ambience.image = null;
+    };
+  });
+
+  function onHeroError(): void {
+    if (heroImage) {
+      failedImages = { ...failedImages, [heroImage]: true };
+    }
+  }
 
   function stripHtml(html: string | null | undefined): string {
     if (!html) return "";
@@ -88,6 +126,7 @@
     <div class="absolute inset-0 z-0 overflow-hidden">
       {#if heroImage}
         <img
+          onerror={onHeroError}
           src={heroImage}
           alt={displayTitle(currentItem.title_english, currentItem.title_romaji)}
           class="h-full w-full object-cover object-center transition-opacity duration-700 ease-out"

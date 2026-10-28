@@ -62,6 +62,7 @@ export interface AnimeSearchResultItem {
   score?: number | null;
   genres?: string[];
   latest_episode?: number | null;
+  trailer_thumbnail?: string | null;
 }
 
 export interface AnimeSearchResponse {

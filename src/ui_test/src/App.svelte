@@ -10,12 +10,14 @@
   import Watch from "$lib/pages/Watch.svelte";
   import UndoSnackbar from "$lib/components/UndoSnackbar.svelte";
   import NewEpisodeNotifier from "$lib/components/NewEpisodeNotifier.svelte";
+  import AmbientBackground from "$lib/components/AmbientBackground.svelte";
   import { router } from "$lib/router.svelte";
 
   let isSearchActive = $state(false);
 </script>
 
 <div class="dark flex min-h-dvh flex-col bg-background text-foreground">
+  <AmbientBackground />
   <header class="sticky top-0 z-40 flex items-center justify-between gap-2 sm:gap-4 border-b border-border/80 bg-background/95 px-3 sm:px-6 py-2.5 backdrop-blur-md">
     <!-- Logo (hidden on mobile when search is actively expanded) -->
     <div class="items-center gap-3 shrink-0 {isSearchActive ? 'hidden sm:flex' : 'flex'}">
