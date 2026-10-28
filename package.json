@@ -6,7 +6,7 @@
   "main": "src/animedy_v1/index.ts",
   "scripts": {
     "dev": "node node_modules/tsx/dist/cli.mjs watch src/animedy_v1/index.ts",
-    "build": "node node_modules/typescript/bin/tsc -p tsconfig.json && (cd src/ui_test && npm install && npm run build)",
+    "build": "npx tsc -p tsconfig.json && (cd src/ui_test && npm install && npm run build)",
     "postbuild": "mkdir -p dist/jsondef && cp -R src/jsondef/. dist/jsondef/",
     "start": "node dist/animedy_v1/index.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
@@ -19,7 +19,8 @@
     "hono": "^4.6.14",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.11.5",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "typescript": "^5.7.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
@@ -33,7 +34,6 @@
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1"
   }
 }
