@@ -1,4 +1,5 @@
 import { apiPost, ApiError, getStoredToken, setStoredToken } from "$lib/api/client";
+import { mergeGuestProgress } from "$lib/db/merge";
 import type {
   AuthLoginRequest,
   AuthMeResponse,
@@ -61,6 +62,8 @@ class AuthStore {
       this.user = res.user;
       setStoredToken(res.token);
       ok = true;
+      // Merge guest progress into the account (newest last_watched_at wins).
+      void mergeGuestProgress();
     } catch (err) {
       this.error = err instanceof ApiError ? err.message : "Unexpected error.";
     } finally {
