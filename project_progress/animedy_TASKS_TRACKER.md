@@ -10,6 +10,7 @@
 - **Blockers:** none
 
 ## Log
+| 2026-10-28 | PIVOT — DB-less frontend-only rebuild (user decision) | Done | User: free site, no accounts, no database. src/ui_test is now fully standalone: lib/api/anilist.ts (browser → AniList GraphQL direct: search, trending/popular/top-rated/seasonal browse, details, client-side franchise walk; network-first w/ IndexedDB fallback cache), lib/api/aniskip.ts (direct AniSkip by MAL id), lib/continuation.ts (local continue-watching rail + watch-next from IndexedDB progress). Watch page is embed-only (AutoStream/VidSrc keyed by anilist id + episode number; route /watch/:animeId/:epNumber), registers history on open + "Mark Watched → Next" button (cross-origin iframes can't report playback time). History/Continue Watching/Settings are IndexedDB-only; login UI, auth store, db/merge.ts, api/cached.ts REMOVED; api/client.ts reduced to ApiError. Backend src/animedy_v1 + MariaDB now UNUSED by the app (left in repo; delete when ready; backend tests/jest and Player/Countdown/WhatsNext components also now unused by the live flow but kept). Verified: svelte-check 0/0, eslint clean (1 pre-existing warning in user-edited Player.svelte), Vitest 21/21, vite build OK, preview smoke 200. |
 | Date | Task | Status | Notes |
 |---|---|---|---|
 | 2026-10-28 | PRD + checklist generated | Done | prd-craft; approved by user. Handed off to dev-orchestrator. |
