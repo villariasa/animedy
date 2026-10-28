@@ -17,8 +17,8 @@
   <header class="sticky top-0 z-40 flex items-center justify-between gap-2 sm:gap-4 border-b border-border/80 bg-background/95 px-3 sm:px-6 py-2.5 backdrop-blur-md">
     <!-- Logo (hidden on mobile when search is actively expanded) -->
     <div class="items-center gap-3 shrink-0 {isSearchActive ? 'hidden sm:flex' : 'flex'}">
-      <a href="#/" class="text-base sm:text-lg font-bold tracking-tight text-foreground transition-opacity hover:opacity-90">
-        <span class="text-primary">Ani</span>medy
+      <a href="#/" class="transition-opacity hover:opacity-90">
+        <img src="/icons/logo-small.png" alt="Animedy" class="h-7 w-auto sm:h-8" />
       </a>
     </div>
 

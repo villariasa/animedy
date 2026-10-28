@@ -163,20 +163,30 @@ export async function browseAnime(tag: BrowseTag): Promise<AnimeSearchResultItem
   // lists), and Top Rated needs a popularity floor — raw SCORE_DESC surfaces
   // obscure titles with a handful of votes, which is not how MAL/AniList
   // Top-100 style rankings work.
-  const minPopularity = tag === "top_rated" ? 50000 : null;
+  // AniList 400s ("Illegal operator and value combination") when filter args
+  // are passed as explicit nulls — only include the args we actually use.
+  const mediaArgs = ['type: ANIME', "sort: $sort", "isAdult: false", 'countryOfOrigin: "JP"'];
+  let varDefs = "$sort: [MediaSort]";
+  const variables: Record<string, unknown> = { sort: [sortMap[tag]] };
+  if (seasonal) {
+    mediaArgs.push("season: $season", "seasonYear: $seasonYear");
+    varDefs += ", $season: MediaSeason, $seasonYear: Int";
+    variables.season = season;
+    variables.seasonYear = now.getFullYear();
+  }
+  if (tag === "top_rated") {
+    mediaArgs.push("popularity_greater: $minPopularity");
+    varDefs += ", $minPopularity: Int";
+    variables.minPopularity = 50000;
+  }
   const data = await gql<{ Page: { media: AniListMedia[] } }>(
-    `anilist:browse:v2:${tag}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}`,
-    `query ($sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $minPopularity: Int) {
+    `anilist:browse:v3:${tag}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}`,
+    `query (${varDefs}) {
       Page(page: 1, perPage: 24) {
-        media(type: ANIME, sort: $sort, season: $season, seasonYear: $seasonYear, isAdult: false, countryOfOrigin: "JP", popularity_greater: $minPopularity) { ${MEDIA_FIELDS} }
+        media(${mediaArgs.join(", ")}) { ${MEDIA_FIELDS} }
       }
     }`,
-    {
-      sort: [sortMap[tag]],
-      season: seasonal ? season : null,
-      seasonYear: seasonal ? now.getFullYear() : null,
-      minPopularity
-    }
+    variables
   );
   return data.Page.media.map(toSearchItem);
 }
