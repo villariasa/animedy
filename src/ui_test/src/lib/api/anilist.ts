@@ -92,7 +92,8 @@ function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
     cover_image: m.coverImage.extraLarge ?? m.coverImage.large,
     format: (m.format as AnimeFormat) ?? null,
     status: (m.status as AnimeStatus) ?? null,
-    season_year: m.seasonYear
+    season_year: m.seasonYear,
+    description: m.description
   };
 }
 

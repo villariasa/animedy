@@ -57,6 +57,7 @@ export interface AnimeSearchResultItem {
   format: AnimeFormat | null;
   status: AnimeStatus | null;
   season_year: number | null;
+  description?: string | null;
 }
 
 export interface AnimeSearchResponse {

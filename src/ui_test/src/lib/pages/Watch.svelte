@@ -16,8 +16,9 @@
   let error = $state<string | null>(null);
   let drawerOpen = $state(false);
 
-  type StreamServer = "embed_vidsrc" | "embed_multiembed" | "embed_auto";
-  let selectedServer = $state<StreamServer>("embed_vidsrc");
+  type StreamServer = "embed_animekai" | "embed_videasy" | "embed_vidsrc_cc" | "embed_vidlink";
+  let selectedServer = $state<StreamServer>("embed_animekai");
+  let frameBox = $state<HTMLDivElement | null>(null);
 
   const animeTitle = $derived(anime ? displayTitle(anime.title_english, anime.title_romaji) : "");
   const currentEpisode = $derived(episodes.find((e) => e.episode_number === episodeId));
@@ -28,11 +29,27 @@
       ? `Episode ${currentEpisode.episode_number}${currentEpisode.title ? ` · ${currentEpisode.title}` : ""}`
       : `Episode ${episodeId}`
   );
+  // Server 1 is the SAME player animekai.com.ro embeds (gogoanime.me.uk wraps
+  // megaplay with the right referer; keyed by MAL id + episode + sub, autostarts).
+  // Verified 2026-10-28 to serve a frameable player (no X-Frame-Options).
+  // Others key by AniList id. vidsrc.pm/.icu, autoembed, multiembed removed (dead).
+  const malId = $derived(anime?.mal_id ?? null);
   const serverEmbedUrls = $derived<Record<StreamServer, string>>({
-    embed_vidsrc: `https://vidsrc.pm/embed/anime?anilist=${animeId}&ep=${episodeId}`,
-    embed_multiembed: `https://multiembed.mov/?video_id=${animeId}&ep=${episodeId}`,
-    embed_auto: `https://vidsrc.net/embed/anime?anilist=${animeId}&ep=${episodeId}`
+    embed_animekai: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId ?? 0}&ep=${episodeId}&category=sub`,
+    embed_videasy: `https://player.videasy.net/anime/${animeId}/${episodeId}`,
+    embed_vidsrc_cc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeId}/sub`,
+    embed_vidlink: `https://vidlink.pro/anime/${animeId}/${episodeId}/sub`
   });
+
+  // User-gesture fullscreen for the frame itself ("auto" fullscreen without a
+  // click is blocked by every browser).
+  function fullscreenFrame(): void {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+    } else {
+      void frameBox?.requestFullscreen().catch(() => undefined);
+    }
+  }
 
   $effect(() => {
     const aId = animeId;
@@ -48,6 +65,9 @@
     try {
       anime = await getAnimeDetails(aId);
       episodes = buildEpisodes(anime);
+      if (anime.mal_id === null && selectedServer === "embed_animekai") {
+        selectedServer = "embed_videasy";
+      }
       await registerInHistory(aId, epNum);
     } catch (err) {
       error = err instanceof ApiError ? err.message : "Failed to load episode.";
@@ -133,34 +153,56 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-1.5">
+        {#if malId !== null}
+          <button
+            type="button"
+            class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_animekai' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+            onclick={() => (selectedServer = 'embed_animekai')}
+          >
+            Server 1 (AnimeKai)
+          </button>
+        {/if}
+
         <button
           type="button"
-          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidsrc' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-          onclick={() => (selectedServer = 'embed_vidsrc')}
+          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_videasy' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          onclick={() => (selectedServer = 'embed_videasy')}
         >
-          Server 1 (VidSrc HD)
+          Server 2 (Videasy)
         </button>
 
         <button
           type="button"
-          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_multiembed' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-          onclick={() => (selectedServer = 'embed_multiembed')}
+          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidsrc_cc' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          onclick={() => (selectedServer = 'embed_vidsrc_cc')}
         >
-          Server 2 (MultiStream)
+          Server 3 (VidSrc CC)
         </button>
 
         <button
           type="button"
-          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_auto' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-          onclick={() => (selectedServer = 'embed_auto')}
+          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidlink' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          onclick={() => (selectedServer = 'embed_vidlink')}
         >
-          Server 3 (Mirror)
+          Server 4 (VidLink)
+        </button>
+
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 rounded-lg border border-border/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          onclick={fullscreenFrame}
+          title="Fullscreen the player frame"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+          </svg>
+          Fullscreen
         </button>
       </div>
     </div>
 
     <div class="relative">
-      <div class="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black shadow-lg">
+      <div bind:this={frameBox} class="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black shadow-lg">
         <iframe
           src={serverEmbedUrls[selectedServer]}
           title="{animeTitle} - {episodeLabel}"
@@ -169,6 +211,9 @@
           allowfullscreen
         ></iframe>
       </div>
+      <p class="mt-2 text-center text-[11px] text-muted-foreground">
+        Not loading? Switch servers above — and ad-blockers often block these players, so whitelist the site if the frame stays blank.
+      </p>
     </div>
 
     <!-- Navigation & Episode Selector Controls Bar -->
