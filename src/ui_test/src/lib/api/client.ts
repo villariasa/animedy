@@ -30,6 +30,12 @@ export function setStoredToken(token: string | null): void {
  * All Animedy endpoints are POST; pass `{}` when there are no parameters.
  * Throws `ApiError` on `success: false`, non-JSON responses, or network failure.
  */
+const API_BASE = (
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  (import.meta.env.VITE_API_URL as string | undefined) ??
+  ""
+).replace(/\/+$/, "");
+
 export async function apiPost<T>(route: string, body: object = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = getStoredToken();
@@ -37,9 +43,11 @@ export async function apiPost<T>(route: string, body: object = {}): Promise<T> {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  const targetUrl = route.startsWith("http") ? route : `${API_BASE}${route}`;
+
   let envelope: ApiEnvelope<T>;
   try {
-    const response = await fetch(route, {
+    const response = await fetch(targetUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(body)

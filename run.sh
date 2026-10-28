@@ -6,6 +6,13 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
+# Load .env if present
+if [ -f "$DIR/.env" ]; then
+  set -a
+  source "$DIR/.env"
+  set +a
+fi
+
 # Ensure node/npm are in PATH if running in an environment without them pre-loaded
 if ! command -v npm &> /dev/null; then
   if [ -d "$HOME/.nvm/versions/node/v22.19.0/bin" ]; then

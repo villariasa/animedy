@@ -5,10 +5,10 @@
   "type": "module",
   "main": "src/animedy_v1/index.ts",
   "scripts": {
-    "dev": "node node_modules/tsx/dist/cli.mjs watch src/animedy_v1/index.ts",
+    "dev": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs watch src/animedy_v1/index.ts",
     "build": "npx tsc -p tsconfig.json && (cd src/ui_test && npm install && npm run build)",
     "postbuild": "mkdir -p dist/jsondef && cp -R src/jsondef/. dist/jsondef/",
-    "start": "node dist/animedy_v1/index.js",
+    "start": "node --env-file-if-exists=.env dist/animedy_v1/index.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
     "lint": "node node_modules/eslint/bin/eslint.js src"
   },
