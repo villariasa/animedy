@@ -64,7 +64,7 @@
   {:else}
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {#each filteredItems as item (item.anime_id)}
-        <div class="group relative flex flex-col gap-2 rounded-xl text-left">
+        <div class="group relative flex w-full min-w-0 overflow-hidden flex-col gap-2 rounded-xl text-left">
           <!-- Anime Cover Image Preview Box -->
           <button
             type="button"
@@ -103,15 +103,16 @@
           </button>
 
           <!-- Details -->
-          <div class="min-w-0">
+          <div class="w-full min-w-0 overflow-hidden">
             <button
               type="button"
-              class="truncate text-left text-sm font-semibold tracking-tight transition-colors hover:text-primary"
+              class="block w-full truncate text-left text-sm font-semibold tracking-tight transition-colors hover:text-primary"
               onclick={() => router.go(`/anime/${item.anime_id}`)}
+              title={displayTitle(item.title_english, item.title_romaji)}
             >
               {displayTitle(item.title_english, item.title_romaji)}
             </button>
-            <p class="mt-0.5 text-xs text-muted-foreground">
+            <p class="mt-0.5 truncate text-xs text-muted-foreground">
               {[item.format, item.season_year].filter(Boolean).join(" · ")}
             </p>
           </div>

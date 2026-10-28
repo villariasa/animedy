@@ -341,8 +341,8 @@
         {:else}
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
             {#each curatedItems as item, index (item.anime_id)}
-              <li>
-                <div class="group relative flex w-full flex-col gap-2 rounded-xl text-left">
+              <li class="min-w-0 overflow-hidden">
+                <div class="group relative flex w-full min-w-0 flex-col gap-2 rounded-xl text-left">
                   <button
                     type="button"
                     class="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -398,16 +398,17 @@
                     </svg>
                   </button>
 
-                  <div class="min-w-0">
+                  <div class="w-full min-w-0 overflow-hidden">
                     <button
                       type="button"
-                      class="truncate text-left text-sm font-semibold tracking-tight transition-colors hover:text-primary"
+                      class="block w-full truncate text-left text-sm font-semibold tracking-tight transition-colors hover:text-primary"
                       onclick={() => router.go(`/anime/${item.anime_id}`)}
+                      title={displayTitle(item.title_english, item.title_romaji)}
                     >
                       {displayTitle(item.title_english, item.title_romaji)}
                     </button>
-                    <p class="mt-0.5 text-xs text-muted-foreground">
-                      {[item.format, item.season_year, item.status ? item.status.toLowerCase() : null].filter(Boolean).join(" · ")}
+                    <p class="mt-0.5 truncate text-xs text-muted-foreground">
+                      {[item.format, item.season_year, item.status ? item.status.toLowerCase().replace(/_/g, " ") : null].filter(Boolean).join(" · ")}
                     </p>
                   </div>
                 </div>
