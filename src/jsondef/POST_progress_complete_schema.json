@@ -1,0 +1,56 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/progress/complete": {
+      "post": {
+        "summary": "Mark episode complete, advance watch_state pointer",
+        "tags": ["Progress"],
+        "security": [{ "bearerAuth": [] }],
+        "description": "Advances to the next episode in the same anime, else the next franchise entry by sequence_order, else marks the franchise completed.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["episode_id"],
+                "additionalProperties": false,
+                "properties": { "episode_id": { "type": "integer", "minimum": 1 } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Episode/series/franchise completion processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "episode_id": { "type": "integer" },
+                        "franchise_key": { "type": "string" },
+                        "next_episode_id": { "type": ["integer", "null"] },
+                        "franchise_completed": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "404": { "description": "Episode not found" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

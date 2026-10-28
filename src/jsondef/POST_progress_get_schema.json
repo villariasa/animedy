@@ -1,0 +1,55 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/progress/get": {
+      "post": {
+        "summary": "Resume position for an episode",
+        "tags": ["Progress"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["episode_id"],
+                "additionalProperties": false,
+                "properties": { "episode_id": { "type": "integer", "minimum": 1 } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Progress retrieved (zeros/false if never saved)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "episode_id": { "type": "integer" },
+                        "position_seconds": { "type": "integer" },
+                        "duration_seconds": { "type": "integer" },
+                        "completed": { "type": "boolean" },
+                        "last_watched_at": { "type": ["string", "null"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

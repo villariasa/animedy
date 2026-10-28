@@ -248,21 +248,40 @@ export interface WatchNextGetRequest {
   anime_id?: number;
 }
 
-export type WatchNextReason =
+// NOTE: Phase 4 (coordinator spec) replaced the Phase 1 draft's flat
+// {reason, anime_id, episode_id, title_romaji, title_english} shape with a
+// richer {type, anime, episode, reason} shape returned by the continuation
+// engine (utils/watchnext.ts). Logged as a deviation in the tracker.
+export type WatchNextType =
+  | "RESUME"
   | "NEXT_EPISODE"
   | "NEXT_SEASON"
   | "SEQUEL"
   | "MOVIE"
   | "SPECIAL_OR_OVA"
-  | "FRANCHISE_RECOMMENDATION"
+  | "RECOMMENDATION"
   | "NONE";
 
-export interface WatchNextGetResponse {
-  reason: WatchNextReason;
-  anime_id: number | null;
-  episode_id: number | null;
+export interface WatchNextAnimeSummary {
+  anime_id: number;
   title_romaji: string | null;
   title_english: string | null;
+  format: AnimeFormat | null;
+  season_label: string | null;
+}
+
+export interface WatchNextEpisodeSummary {
+  episode_id: number;
+  episode_number: number;
+  title: string | null;
+  resume_position_seconds: number;
+}
+
+export interface WatchNextGetResponse {
+  type: WatchNextType;
+  anime: WatchNextAnimeSummary | null;
+  episode: WatchNextEpisodeSummary | null;
+  reason: string;
 }
 
 export interface HistoryListRequest {
@@ -276,13 +295,20 @@ export interface HistoryListItem {
   title_romaji: string | null;
   title_english: string | null;
   episode_number: number;
+  episode_title: string | null;
   completed: boolean;
   last_watched_at: string;
+}
+
+export interface HistoryCompletedCount {
+  anime_id: number;
+  completed_episodes: number;
 }
 
 export interface HistoryListResponse {
   items: HistoryListItem[];
   total: number;
+  completed_counts: HistoryCompletedCount[];
 }
 
 // -------------------- Settings --------------------

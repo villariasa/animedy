@@ -11,6 +11,11 @@ import { animeRoutes } from "./routes/anime.js";
 import { episodesRoutes } from "./routes/episodes.js";
 import { skipRoutes } from "./routes/skip.js";
 import { adminRoutes } from "./routes/admin.js";
+import { progressRoutes } from "./routes/progress.js";
+import { continueWatchingRoutes } from "./routes/continueWatching.js";
+import { watchNextRoutes } from "./routes/watchNext.js";
+import { historyRoutes } from "./routes/history.js";
+import { DOCS_PAGE_HTML } from "./lib/docsPage.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -24,6 +29,10 @@ app.route("/api/anime", animeRoutes);
 app.route("/api/episodes", episodesRoutes);
 app.route("/api/skip", skipRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/progress", progressRoutes);
+app.route("/api/continue-watching", continueWatchingRoutes);
+app.route("/api/watch-next", watchNextRoutes);
+app.route("/api/history", historyRoutes);
 
 // Lists all Swagger JSON definitions available in src/jsondef/.
 app.post("/docs/index", async (context) => {
@@ -52,6 +61,11 @@ app.post("/docs/file", async (context) => {
     return context.json(fail("Swagger definition not found", 404), 404);
   }
 });
+
+// Documented exception to the POST-only API rule: this is a human-facing
+// documentation UI page, not an API endpoint, so a standard GET is used so
+// it can be opened directly in a browser.
+app.get("/docs", (context) => context.html(DOCS_PAGE_HTML));
 
 app.notFound((context) => context.json(fail("Not found", 404), 404));
 

@@ -148,8 +148,13 @@ export async function walkAndPersistFranchise(startMedia: AniListMedia): Promise
     }
 
     for (let i = 0; i < chain.length - 1; i += 1) {
-      const fromId = idByAnilistId.get(chain[i].id);
-      const toId = idByAnilistId.get(chain[i + 1].id);
+      const currentNode = chain[i];
+      const nextNode = chain[i + 1];
+      if (!currentNode || !nextNode) {
+        continue;
+      }
+      const fromId = idByAnilistId.get(currentNode.id);
+      const toId = idByAnilistId.get(nextNode.id);
       if (fromId && toId) {
         await query(INSERT_ANIME_RELATION, [fromId, toId, "SEQUEL"]);
         await query(INSERT_ANIME_RELATION, [toId, fromId, "PREQUEL"]);

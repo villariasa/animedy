@@ -1,0 +1,28 @@
+{
+  "name": "animedy-ui",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node node_modules/vite/bin/vite.js",
+    "build": "node node_modules/vite/bin/vite.js build",
+    "preview": "node node_modules/vite/bin/vite.js preview",
+    "check": "node node_modules/svelte-check/bin/svelte-check.js --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "bits-ui": "^2.20.2",
+    "clsx": "^2.1.1",
+    "idb": "^8.0.4",
+    "svelte": "^5.57.3",
+    "tailwind-merge": "^3.7.0",
+    "tailwind-variants": "^3.3.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "svelte-check": "^4.7.7",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9",
+    "vite": "^8.3.5"
+  }
+}

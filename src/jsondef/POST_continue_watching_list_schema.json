@@ -1,0 +1,62 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/continue-watching/list": {
+      "post": {
+        "summary": "Continue Watching section (title, season/part, episode, %, remaining time)",
+        "tags": ["Progress"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": false, "properties": {} }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Continue watching list retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "franchise_key": { "type": "string" },
+                              "anime_id": { "type": "integer" },
+                              "title_romaji": { "type": ["string", "null"] },
+                              "title_english": { "type": ["string", "null"] },
+                              "season_label": { "type": ["string", "null"] },
+                              "episode_id": { "type": "integer" },
+                              "episode_number": { "type": "integer" },
+                              "progress_percent": { "type": "integer" },
+                              "remaining_seconds": { "type": "integer" },
+                              "last_watched_at": { "type": "string" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" }
+        }
+      }
+    }
+  }
+}

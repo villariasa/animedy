@@ -1,0 +1,86 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/watch-next/get": {
+      "post": {
+        "summary": "Continuation engine: next episode -> next season/part -> sequel -> movie -> special/OVA -> franchise recommendation",
+        "tags": ["Progress"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "franchise_key": { "type": "string", "minLength": 1, "maxLength": 64 },
+                  "anime_id": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Watch-next recommendation computed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "RESUME",
+                            "NEXT_EPISODE",
+                            "NEXT_SEASON",
+                            "SEQUEL",
+                            "MOVIE",
+                            "SPECIAL_OR_OVA",
+                            "RECOMMENDATION",
+                            "NONE"
+                          ]
+                        },
+                        "anime": {
+                          "type": ["object", "null"],
+                          "properties": {
+                            "anime_id": { "type": "integer" },
+                            "title_romaji": { "type": ["string", "null"] },
+                            "title_english": { "type": ["string", "null"] },
+                            "format": { "type": ["string", "null"] },
+                            "season_label": { "type": ["string", "null"] }
+                          }
+                        },
+                        "episode": {
+                          "type": ["object", "null"],
+                          "properties": {
+                            "episode_id": { "type": "integer" },
+                            "episode_number": { "type": "integer" },
+                            "title": { "type": ["string", "null"] },
+                            "resume_position_seconds": { "type": "integer" }
+                          }
+                        },
+                        "reason": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "404": { "description": "Anime not found" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

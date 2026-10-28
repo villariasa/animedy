@@ -1,0 +1,79 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/history/list": {
+      "post": {
+        "summary": "Watch history (episodes, completions, dates)",
+        "tags": ["Progress"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+                  "offset": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Paginated watch history with per-anime completed-episode counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "episode_id": { "type": "integer" },
+                              "anime_id": { "type": "integer" },
+                              "title_romaji": { "type": ["string", "null"] },
+                              "title_english": { "type": ["string", "null"] },
+                              "episode_number": { "type": "integer" },
+                              "episode_title": { "type": ["string", "null"] },
+                              "completed": { "type": "boolean" },
+                              "last_watched_at": { "type": "string" }
+                            }
+                          }
+                        },
+                        "total": { "type": "integer" },
+                        "completed_counts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "anime_id": { "type": "integer" },
+                              "completed_episodes": { "type": "integer" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

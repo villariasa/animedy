@@ -45,6 +45,13 @@ export const UPSERT_WATCH_STATE = `
     last_watched_at = NOW()
 `;
 
+export const SELECT_USER_HAS_WATCHED_ANIME = `
+  SELECT COUNT(*) AS total
+  FROM watch_progress wp
+  INNER JOIN episodes e ON e.id = wp.episode_id
+  WHERE wp.user_id = ? AND e.anime_id = ?
+`;
+
 export const SELECT_CONTINUE_WATCHING_LIST = `
   SELECT ws.franchise_key, ws.current_anime_id AS anime_id, a.title_romaji,
          a.title_english, a.season_label, ws.current_episode_id AS episode_id,

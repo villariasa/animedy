@@ -1,0 +1,58 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/progress/save": {
+      "post": {
+        "summary": "Save playback position (debounced heartbeat from player)",
+        "tags": ["Progress"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["episode_id", "position_seconds", "duration_seconds"],
+                "additionalProperties": false,
+                "properties": {
+                  "episode_id": { "type": "integer", "minimum": 1 },
+                  "position_seconds": { "type": "integer", "minimum": 0 },
+                  "duration_seconds": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Progress saved (watch_state pointer updated)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "episode_id": { "type": "integer" },
+                        "position_seconds": { "type": "integer" },
+                        "completed": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "404": { "description": "Episode not found" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

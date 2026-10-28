@@ -1,0 +1,26 @@
+{
+  "name": "Animedy — Continuous Anime Watching",
+  "short_name": "Animedy",
+  "description": "Search, watch, and continue anime across seasons, parts, movies and OVAs.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0f17",
+  "theme_color": "#0f0f17",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
