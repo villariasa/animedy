@@ -76,7 +76,11 @@
   // Others key by AniList id. vidsrc.pm/.icu, autoembed, multiembed removed (dead).
   const malId = $derived(anime?.mal_id ?? null);
   const serverEmbedUrls = $derived<Record<StreamServer, string>>({
-    embed_animekai: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId ?? 0}&ep=${episodeId}&category=sub`,
+    // Direct megaplay (the player animekai wraps). It accepts any non-empty
+    // Referer, which iframes send automatically. autostart=false on purpose:
+    // the user's first click is a gesture INSIDE the frame, so playback starts
+    // WITH sound — autoplay can only ever start muted (browser policy).
+    embed_animekai: `https://megaplay.buzz/stream/mal/${malId ?? 0}/${episodeId}/sub?autostart=false`,
     embed_videasy: `https://player.videasy.net/anime/${animeId}/${episodeId}`,
     embed_vidsrc_cc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeId}/sub`,
     embed_vidlink: `https://vidlink.pro/anime/${animeId}/${episodeId}/sub`

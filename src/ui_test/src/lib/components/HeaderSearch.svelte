@@ -4,17 +4,24 @@
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
 
+  let { isSearchActive = $bindable(false) }: { isSearchActive?: boolean } = $props();
+
   const DEBOUNCE_MS = 280;
 
   let query = $state("");
   let results = $state<AnimeSearchResultItem[]>([]);
   let searching = $state(false);
   let isOpen = $state(false);
+  let isFocused = $state(false);
   let activeIndex = $state(-1);
   let containerRef = $state<HTMLDivElement | null>(null);
   let inputRef = $state<HTMLInputElement | null>(null);
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    isSearchActive = isFocused || isOpen || query.trim().length > 0;
+  });
 
   function stripHtml(html: string | null | undefined): string {
     if (!html) return "";
@@ -57,6 +64,7 @@
   }
 
   function onFocus(): void {
+    isFocused = true;
     if (query.trim().length >= 2) {
       isOpen = true;
     }
@@ -70,8 +78,15 @@
     inputRef?.focus();
   }
 
-  function selectItem(item: AnimeSearchResultItem): void {
+  function closeSearch(): void {
     isOpen = false;
+    isFocused = false;
+    activeIndex = -1;
+    inputRef?.blur();
+  }
+
+  function selectItem(item: AnimeSearchResultItem): void {
+    closeSearch();
     query = "";
     router.go(`/anime/${item.anime_id}`);
   }
@@ -85,8 +100,7 @@
     }
 
     if (e.key === "Escape") {
-      isOpen = false;
-      activeIndex = -1;
+      closeSearch();
       return;
     }
 
@@ -106,73 +120,101 @@
   }
 
   $effect(() => {
-    function handleClickOutside(event: MouseEvent): void {
+    function handleClickOutside(event: MouseEvent | TouchEvent): void {
       if (containerRef && !containerRef.contains(event.target as Node)) {
         isOpen = false;
+        isFocused = false;
       }
     }
     document.addEventListener("click", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside, { passive: true });
     return () => {
       document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
     };
   });
 </script>
 
-<div bind:this={containerRef} class="relative w-full max-w-md">
+<div bind:this={containerRef} class="relative w-full">
   <!-- Search Input Container -->
   <div class="relative flex items-center">
-    <!-- Search Icon -->
-    <span class="pointer-events-none absolute left-3 flex items-center text-muted-foreground/70">
-      {#if searching}
-        <svg class="h-4 w-4 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      {:else}
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-        </svg>
-      {/if}
-    </span>
-
-    <input
-      bind:this={inputRef}
-      type="text"
-      bind:value={query}
-      oninput={onInput}
-      onfocus={onFocus}
-      onkeydown={onKeyDown}
-      placeholder="Search anime, movies, series..."
-      class="h-9 w-full rounded-full border border-border/80 bg-muted/40 pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground/60 transition-all focus:border-primary/70 focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-      autocomplete="off"
-      spellcheck="false"
-      id="header-search-input"
-      role="combobox"
-      aria-label="Search anime"
-      aria-expanded={isOpen}
-      aria-controls="header-search-listbox"
-      aria-haspopup="listbox"
-    />
-
-    {#if query.length > 0}
+    <!-- Back arrow button visible on mobile when search is expanded -->
+    {#if isSearchActive}
       <button
         type="button"
-        onclick={clearSearch}
-        class="absolute right-2.5 flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-        aria-label="Clear search"
+        onclick={closeSearch}
+        class="mr-1.5 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:hidden shrink-0"
+        aria-label="Back / Close search"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+          <path fill-rule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clip-rule="evenodd" />
         </svg>
       </button>
     {/if}
+
+    <div class="relative flex-1 flex items-center min-w-0">
+      <!-- Search Icon -->
+      <span class="pointer-events-none absolute left-3 flex items-center text-muted-foreground/70">
+        {#if searching}
+          <svg class="h-4 w-4 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        {:else}
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+        {/if}
+      </span>
+
+      <input
+        bind:this={inputRef}
+        type="text"
+        bind:value={query}
+        oninput={onInput}
+        onfocus={onFocus}
+        onkeydown={onKeyDown}
+        placeholder="Search anime..."
+        class="h-9 w-full rounded-full border border-border/80 bg-muted/40 pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground/60 transition-all focus:border-primary/70 focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+        autocomplete="off"
+        spellcheck="false"
+        id="header-search-input"
+        role="combobox"
+        aria-label="Search anime"
+        aria-expanded={isOpen}
+        aria-controls="header-search-listbox"
+        aria-haspopup="listbox"
+      />
+
+      {#if query.length > 0}
+        <button
+          type="button"
+          onclick={clearSearch}
+          class="absolute right-2.5 flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+          aria-label="Clear search"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+            <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+          </svg>
+        </button>
+      {/if}
+    </div>
   </div>
 
   <!-- Suggestion Dropdown Menu -->
   {#if isOpen}
+    <!-- Mobile backdrop for easy dismissal -->
+    <button
+      type="button"
+      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] sm:hidden"
+      onclick={closeSearch}
+      tabindex="-1"
+      aria-label="Dismiss search results"
+    ></button>
+
     <div
       id="header-search-listbox"
-      class="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-[460px] overflow-y-auto rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-2xl backdrop-blur-xl transition-all animate-in fade-in zoom-in-95 duration-100"
+      class="fixed inset-x-2 top-[54px] sm:absolute sm:inset-x-0 sm:top-full z-50 mt-1 sm:mt-1.5 max-h-[calc(100dvh-70px)] sm:max-h-[460px] overflow-y-auto rounded-xl border border-border/80 bg-card/98 p-1.5 shadow-2xl backdrop-blur-xl transition-all animate-in fade-in zoom-in-95 duration-100"
       role="listbox"
     >
       {#if searching && results.length === 0}
@@ -197,7 +239,7 @@
               <button
                 type="button"
                 onclick={() => selectItem(item)}
-                class="group flex w-full items-start gap-3 rounded-lg p-2 text-left transition-colors {activeIndex === index ? 'bg-primary/15 text-primary' : 'hover:bg-accent/80 text-foreground'}"
+                class="group flex w-full items-start gap-3 rounded-lg p-2 text-left transition-colors {activeIndex === index ? 'bg-primary/15 text-primary' : 'hover:bg-accent/80 active:bg-accent text-foreground'}"
                 role="option"
                 aria-selected={activeIndex === index}
               >
