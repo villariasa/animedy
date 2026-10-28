@@ -16,8 +16,8 @@
   let error = $state<string | null>(null);
   let drawerOpen = $state(false);
 
-  type StreamServer = "embed_auto" | "embed_vidsrc";
-  let selectedServer = $state<StreamServer>("embed_auto");
+  type StreamServer = "embed_vidsrc" | "embed_multiembed" | "embed_auto";
+  let selectedServer = $state<StreamServer>("embed_vidsrc");
 
   const animeTitle = $derived(anime ? displayTitle(anime.title_english, anime.title_romaji) : "");
   const currentEpisode = $derived(episodes.find((e) => e.episode_number === episodeId));
@@ -29,8 +29,9 @@
       : `Episode ${episodeId}`
   );
   const serverEmbedUrls = $derived<Record<StreamServer, string>>({
-    embed_auto: `https://player.autoembed.cc/embed/anime/${animeId}/${episodeId}`,
-    embed_vidsrc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeId}`
+    embed_vidsrc: `https://vidsrc.pm/embed/anime?anilist=${animeId}&ep=${episodeId}`,
+    embed_multiembed: `https://multiembed.mov/?video_id=${animeId}&ep=${episodeId}`,
+    embed_auto: `https://vidsrc.net/embed/anime?anilist=${animeId}&ep=${episodeId}`
   });
 
   $effect(() => {
@@ -134,18 +135,26 @@
       <div class="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_auto' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-          onclick={() => (selectedServer = 'embed_auto')}
+          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidsrc' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          onclick={() => (selectedServer = 'embed_vidsrc')}
         >
-          Server 1 (AutoStream)
+          Server 1 (VidSrc HD)
         </button>
 
         <button
           type="button"
-          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidsrc' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-          onclick={() => (selectedServer = 'embed_vidsrc')}
+          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_multiembed' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          onclick={() => (selectedServer = 'embed_multiembed')}
         >
-          Server 2 (VidSrc)
+          Server 2 (MultiStream)
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_auto' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          onclick={() => (selectedServer = 'embed_auto')}
+        >
+          Server 3 (Mirror)
         </button>
       </div>
     </div>
