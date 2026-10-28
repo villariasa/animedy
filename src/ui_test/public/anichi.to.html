@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Send our FULL url (path contains "anichi.to") as the Referer: the
+         upstream player's ad loader whitelists referrers containing that
+         string and injects NO ad script at all for them. -->
+    <meta name="referrer" content="unsafe-url" />
+    <title>Player</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; }
+      iframe { display: block; width: 100%; height: 100%; border: 0; }
+    </style>
+  </head>
+  <body>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const mal = parseInt(params.get("mal") || "0", 10);
+      const ep = parseInt(params.get("ep") || "0", 10);
+      const cat = params.get("cat") === "dub" ? "dub" : "sub";
+      if (mal > 0 && ep > 0) {
+        const frame = document.createElement("iframe");
+        frame.src = `https://megaplay.buzz/stream/mal/${mal}/${ep}/${cat}?autostart=false`;
+        frame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
+        frame.setAttribute("allowfullscreen", "");
+        document.body.appendChild(frame);
+      } else {
+        document.body.textContent = "Missing stream parameters.";
+      }
+    </script>
+  </body>
+</html>
