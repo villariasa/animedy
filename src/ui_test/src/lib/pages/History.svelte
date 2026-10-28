@@ -1,12 +1,8 @@
 <script lang="ts">
-  import { ApiError } from "$lib/api/client";
-  import { apiPostCached } from "$lib/api/cached";
-  import type { HistoryListItem, HistoryListResponse } from "$lib/api/types";
-  import { getAllLocalProgress, clearLocalProgress, type LocalProgress } from "$lib/db/local";
+  import { getAllLocalProgress, clearLocalProgress } from "$lib/db/local";
   import { Button } from "$lib/components/ui/button";
   import { displayTitle, formatTime } from "$lib/format";
   import { router } from "$lib/router.svelte";
-  import { auth } from "$lib/stores/auth.svelte";
 
   interface DisplayHistoryItem {
     key: string;
@@ -27,53 +23,31 @@
   let error = $state<string | null>(null);
 
   $effect(() => {
-    // Re-run whenever login state flips
-    void loadHistory(auth.isLoggedIn);
+    void loadHistory();
   });
 
-  async function loadHistory(isLoggedIn: boolean): Promise<void> {
+  async function loadHistory(): Promise<void> {
     loading = true;
     error = null;
     try {
-      if (isLoggedIn) {
-        const res = await apiPostCached<HistoryListResponse>("/api/history/list", {
-          limit: 50,
-          offset: 0
-        });
-        items = res.items.map((item) => ({
-          key: `${item.episode_id}-${item.last_watched_at}`,
-          anime_id: item.anime_id,
-          episode_id: item.episode_id,
-          episode_number: item.episode_number,
-          title: displayTitle(item.title_english, item.title_romaji),
-          episode_title: item.episode_title,
-          cover_image: null,
-          position_seconds: 0,
-          duration_seconds: 0,
-          completed: item.completed,
-          last_watched_at: item.last_watched_at
-        }));
-      } else {
-        // Guest mode: load from IndexedDB
-        const local = await getAllLocalProgress();
-        // Sort newest first
-        local.sort((a, b) => new Date(b.last_watched_at).getTime() - new Date(a.last_watched_at).getTime());
-        items = local.map((l) => ({
-          key: `${l.episode_id}-${l.last_watched_at}`,
-          anime_id: l.anime_id,
-          episode_id: l.episode_id,
-          episode_number: l.episode_number ?? (l.episode_id % 1000),
-          title: displayTitle(l.title_english ?? null, l.title_romaji ?? null) || `Anime #${l.anime_id}`,
-          episode_title: l.episode_title,
-          cover_image: l.cover_image ?? null,
-          position_seconds: l.position_seconds,
-          duration_seconds: l.duration_seconds,
-          completed: l.completed,
-          last_watched_at: l.last_watched_at
-        }));
-      }
-    } catch (err) {
-      error = err instanceof ApiError ? err.message : "Failed to load watch history.";
+      // All history lives in this browser's IndexedDB — no accounts, no server.
+      const local = await getAllLocalProgress();
+      local.sort((a, b) => new Date(b.last_watched_at).getTime() - new Date(a.last_watched_at).getTime());
+      items = local.map((l) => ({
+        key: `${l.episode_id}-${l.last_watched_at}`,
+        anime_id: l.anime_id,
+        episode_id: l.episode_id,
+        episode_number: l.episode_number ?? (l.episode_id % 10000),
+        title: displayTitle(l.title_english ?? null, l.title_romaji ?? null) || `Anime #${l.anime_id}`,
+        episode_title: l.episode_title,
+        cover_image: l.cover_image ?? null,
+        position_seconds: l.position_seconds,
+        duration_seconds: l.duration_seconds,
+        completed: l.completed,
+        last_watched_at: l.last_watched_at
+      }));
+    } catch {
+      error = "Failed to load watch history.";
     } finally {
       loading = false;
     }
@@ -110,16 +84,12 @@
       <div>
         <h2 class="text-2xl font-bold tracking-tight">Watch History</h2>
         <p class="text-xs text-muted-foreground">
-          {#if auth.isLoggedIn}
-            Synced cross-device history ({items.length} records)
-          {:else}
-            Guest history saved locally on this browser ({items.length} records)
-          {/if}
+          Saved locally on this browser ({items.length} records)
         </p>
       </div>
     </div>
 
-    {#if items.length > 0 && !auth.isLoggedIn}
+    {#if items.length > 0}
       <Button variant="outline" size="sm" class="text-xs text-muted-foreground hover:text-destructive" onclick={handleClearHistory}>
         Clear History
       </Button>
@@ -157,7 +127,7 @@
             <button
               type="button"
               class="flex flex-1 items-center gap-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
-              onclick={() => router.go(`/watch/${item.anime_id}/${item.episode_id}`)}
+              onclick={() => router.go(`/watch/${item.anime_id}/${item.episode_number}`)}
             >
               <!-- Poster / Thumbnail Preview -->
               <div class="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg bg-muted shadow-sm ring-1 ring-border/50">

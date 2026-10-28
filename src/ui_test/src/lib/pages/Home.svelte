@@ -1,16 +1,11 @@
 <script lang="ts">
-  import { apiPost, ApiError } from "$lib/api/client";
-  import { apiPostCached } from "$lib/api/cached";
-  import type {
-    AnimeSearchResponse,
-    AnimeSearchResultItem,
-    ContinueWatchingItem,
-    ContinueWatchingListResponse
-  } from "$lib/api/types";
+  import { ApiError } from "$lib/api/client";
+  import { browseAnime, searchAnime, type BrowseTag } from "$lib/api/anilist";
+  import type { AnimeSearchResultItem, ContinueWatchingItem } from "$lib/api/types";
   import ContinueWatchingCard from "$lib/components/ContinueWatchingCard.svelte";
+  import { getContinueWatching } from "$lib/continuation";
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
-  import { auth } from "$lib/stores/auth.svelte";
   import { likes } from "$lib/stores/likes.svelte";
 
   type MainCuratedTab = "trending" | "popular";
@@ -42,8 +37,7 @@
     searching = true;
     searchError = null;
     try {
-      const res = await apiPostCached<AnimeSearchResponse>("/api/anime/search", { query: q });
-      results = res.results;
+      results = await searchAnime(q);
     } catch (err) {
       results = [];
       searchError = err instanceof ApiError ? err.message : "Search failed.";
@@ -73,9 +67,7 @@
     curatedLoading = true;
     curatedError = null;
     try {
-      const tag = tab === "trending" ? ":trending" : ":popular";
-      const res = await apiPostCached<AnimeSearchResponse>("/api/anime/search", { query: tag });
-      curatedItems = res.results;
+      curatedItems = await browseAnime(tab);
     } catch (err) {
       curatedError = err instanceof ApiError ? err.message : "Failed to load curated anime.";
     } finally {
@@ -87,15 +79,8 @@
     rankingLoading = true;
     rankingError = null;
     try {
-      const tagMap: Record<RankingTab, string> = {
-        top_rated: ":top_rated",
-        trending: ":trending",
-        this_week: ":this_week",
-        this_month: ":this_month"
-      };
-      const tag = tagMap[tab] ?? ":top_rated";
-      const res = await apiPostCached<AnimeSearchResponse>("/api/anime/search", { query: tag });
-      rankingItems = res.results.slice(0, 10);
+      const items = await browseAnime(tab as BrowseTag);
+      rankingItems = items.slice(0, 10);
     } catch (err) {
       rankingError = err instanceof ApiError ? err.message : "Failed to load rankings.";
     } finally {
@@ -111,19 +96,16 @@
     void loadRankings(rankingTab);
   });
 
+  // Continue Watching rail from this device's IndexedDB history.
   $effect(() => {
-    if (auth.isLoggedIn) {
-      void apiPost<ContinueWatchingListResponse>("/api/continue-watching/list")
-        .then((res) => {
-          continueItems = res.items;
-          railError = null;
-        })
-        .catch((err: unknown) => {
-          railError = err instanceof ApiError ? err.message : "Could not load Continue Watching.";
-        });
-    } else {
-      continueItems = [];
-    }
+    void getContinueWatching()
+      .then((items) => {
+        continueItems = items;
+        railError = null;
+      })
+      .catch(() => {
+        railError = "Could not load Continue Watching.";
+      });
   });
 </script>
 
@@ -182,8 +164,8 @@
     </label>
   </search>
 
-  <!-- Continue watching rail (if logged in) -->
-  {#if auth.isLoggedIn && (continueItems.length > 0 || railError)}
+  <!-- Continue watching rail (from this device's history) -->
+  {#if continueItems.length > 0 || railError}
     <section aria-label="Continue watching">
       <h2 class="mb-3 text-lg font-semibold tracking-tight">Continue Watching</h2>
       {#if railError}

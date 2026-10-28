@@ -1,7 +1,5 @@
-import { apiPost } from "$lib/api/client";
-import type { SettingsGetResponse, SettingsPayload, SettingsSaveRequest, SettingsSaveResponse } from "$lib/api/types";
+import type { SettingsPayload, SettingsSaveRequest } from "$lib/api/types";
 import { getLocalSettings, saveLocalSettings } from "$lib/db/local";
-import { auth } from "$lib/stores/auth.svelte";
 
 export const DEFAULT_SETTINGS: SettingsPayload = {
   volume: 1,
@@ -18,41 +16,24 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   skip_source: "aniskip"
 };
 
-/**
- * Player settings store ($state). Logged in: server is source of truth
- * (/api/settings/get|save) with IndexedDB as offline cache. Guest: IndexedDB.
- */
+/** Player settings store ($state) — stored in IndexedDB on this device only
+ * (no accounts, no server). */
 class SettingsStore {
   current = $state<SettingsPayload>(DEFAULT_SETTINGS);
   loaded = $state(false);
 
   async load(): Promise<void> {
-    const local = await getLocalSettings().catch(() => undefined);
-    if (local) {
-      this.current = { ...DEFAULT_SETTINGS, ...local };
-    }
-    if (auth.isLoggedIn) {
-      try {
-        const res = await apiPost<SettingsGetResponse>("/api/settings/get");
-        this.current = res.settings;
-        await saveLocalSettings(res.settings).catch(() => undefined);
-      } catch {
-        // Offline — keep the cached local copy.
+    if (!this.loaded) {
+      const local = await getLocalSettings().catch(() => undefined);
+      if (local) {
+        this.current = { ...DEFAULT_SETTINGS, ...local };
       }
+      this.loaded = true;
     }
-    this.loaded = true;
   }
 
   async save(patch: SettingsSaveRequest): Promise<void> {
     this.current = { ...this.current, ...patch };
-    if (auth.isLoggedIn) {
-      try {
-        const res = await apiPost<SettingsSaveResponse>("/api/settings/save", patch);
-        this.current = res.settings;
-      } catch {
-        // Patch stays applied locally; next successful save syncs it.
-      }
-    }
     await saveLocalSettings($state.snapshot(this.current)).catch(() => undefined);
   }
 }

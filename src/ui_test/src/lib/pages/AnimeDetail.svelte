@@ -1,19 +1,11 @@
 <script lang="ts">
-  import { apiPost, ApiError } from "$lib/api/client";
-  import { apiPostCached } from "$lib/api/cached";
-  import type {
-    AnimeDetails,
-    AnimeDetailsResponse,
-    AnimeFranchiseResponse,
-    EpisodeListItem,
-    EpisodesListResponse,
-    FranchiseEntry,
-    WatchNextGetResponse
-  } from "$lib/api/types";
+  import { ApiError } from "$lib/api/client";
+  import { buildEpisodes, getAnimeDetails, getFranchise } from "$lib/api/anilist";
+  import type { AnimeDetails, EpisodeListItem, FranchiseEntry } from "$lib/api/types";
   import { Button } from "$lib/components/ui/button";
+  import { getLocalWatchNext, type LocalWatchNext } from "$lib/continuation";
   import { displayTitle, stripHtml } from "$lib/format";
   import { router } from "$lib/router.svelte";
-  import { auth } from "$lib/stores/auth.svelte";
   import { likes } from "$lib/stores/likes.svelte";
 
   let { animeId }: { animeId: number } = $props();
@@ -21,10 +13,9 @@
   let anime = $state<AnimeDetails | null>(null);
   let franchise = $state<FranchiseEntry[]>([]);
   let episodes = $state<EpisodeListItem[]>([]);
-  let watchNext = $state<WatchNextGetResponse | null>(null);
+  let watchNext = $state<LocalWatchNext | null>(null);
   let error = $state<string | null>(null);
   let loading = $state(true);
-  let showTrailerModal = $state(false);
 
   const title = $derived(anime ? displayTitle(anime.title_english, anime.title_romaji) : "");
   const metaLine = $derived(
@@ -52,19 +43,10 @@
     loading = true;
     error = null;
     try {
-      const [detailsRes, franchiseRes, episodesRes] = await Promise.all([
-        apiPostCached<AnimeDetailsResponse>("/api/anime/details", { anime_id: id }),
-        apiPostCached<AnimeFranchiseResponse>("/api/anime/franchise", { anime_id: id }).catch(() => null),
-        apiPostCached<EpisodesListResponse>("/api/episodes/list", { anime_id: id }).catch(() => null)
-      ]);
-      anime = detailsRes.anime;
-      franchise = franchiseRes?.entries ?? [];
-      episodes = episodesRes?.episodes ?? [];
-      if (auth.isLoggedIn) {
-        watchNext = await apiPost<WatchNextGetResponse>("/api/watch-next/get", { anime_id: id }).catch(
-          () => null
-        );
-      }
+      anime = await getAnimeDetails(id);
+      episodes = buildEpisodes(anime);
+      franchise = await getFranchise(id).catch(() => []);
+      watchNext = await getLocalWatchNext(id, anime.episode_count, franchise).catch(() => null);
     } catch (err) {
       error = err instanceof ApiError ? err.message : "Failed to load anime.";
     } finally {
@@ -129,7 +111,7 @@
           {#if episodes.length > 0}
             <Button
               class="gap-2 shadow-lg"
-              onclick={() => episodes[0] && router.go(`/watch/${anime?.id}/${episodes[0].episode_id}`)}
+              onclick={() => episodes[0] && router.go(`/watch/${anime?.id}/${episodes[0].episode_number}`)}
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4" aria-hidden="true">
                 <path d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11V15.89a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z" />
@@ -162,7 +144,7 @@
       </div>
     </section>
 
-    {#if watchNext && watchNext.type !== "NONE" && watchNext.episode}
+    {#if watchNext}
       <section
         class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4 shadow-sm"
         aria-label="Watch next"
@@ -170,18 +152,13 @@
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-wider text-primary">Watch next</p>
           <p class="mt-0.5 truncate text-sm font-medium">
-            {watchNext.anime ? displayTitle(watchNext.anime.title_english, watchNext.anime.title_romaji) : title}
-            — Episode {watchNext.episode.episode_number}
-            {watchNext.episode.title ? `· ${watchNext.episode.title}` : ""}
+            {watchNext.title ?? title}
+            — Episode {watchNext.episode_number}
+            {#if watchNext.season_label}· {watchNext.season_label}{/if}
           </p>
-          {#if watchNext.reason}
-            <p class="text-xs text-muted-foreground">{watchNext.reason}</p>
-          {/if}
+          <p class="text-xs text-muted-foreground">{watchNext.reason}</p>
         </div>
-        <Button
-          onclick={() =>
-            router.go(`/watch/${watchNext?.anime?.anime_id ?? anime?.id}/${watchNext?.episode?.episode_id}`)}
-        >
+        <Button onclick={() => router.go(`/watch/${watchNext?.anime_id}/${watchNext?.episode_number}`)}>
           {watchNext.type === "RESUME" ? "Resume" : "Watch Next"}
         </Button>
       </section>
@@ -242,7 +219,7 @@
               <button
                 type="button"
                 class="group flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onclick={() => router.go(`/watch/${anime?.id}/${ep.episode_id}`)}
+                onclick={() => router.go(`/watch/${anime?.id}/${ep.episode_number}`)}
               >
                 <!-- 16:9 Image Preview Box with Play Hover Overlay -->
                 <div class="relative h-20 w-36 sm:h-24 sm:w-44 shrink-0 overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/50 transition-all duration-300 group-hover:ring-primary/60 group-hover:shadow-md">

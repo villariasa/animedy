@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button";
   import AnimeDetail from "$lib/pages/AnimeDetail.svelte";
   import Home from "$lib/pages/Home.svelte";
   import History from "$lib/pages/History.svelte";
@@ -9,24 +8,6 @@
   import Settings from "$lib/pages/Settings.svelte";
   import Watch from "$lib/pages/Watch.svelte";
   import { router } from "$lib/router.svelte";
-  import { auth } from "$lib/stores/auth.svelte";
-
-  let email = $state("");
-  let password = $state("");
-  let showLogin = $state(false);
-
-  $effect(() => {
-    void auth.restore();
-  });
-
-  async function onLoginSubmit(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    const ok = await auth.login({ email, password });
-    if (ok) {
-      showLogin = false;
-      password = "";
-    }
-  }
 </script>
 
 <div class="dark flex min-h-dvh flex-col bg-background text-foreground">
@@ -48,48 +29,11 @@
       </a>
       <a href="#/history" class="rounded-md px-3 py-1.5 transition-colors hover:bg-accent {router.current.name === 'history' ? 'bg-primary/10 text-primary font-medium' : ''}">History</a>
       <a href="#/settings" class="rounded-md px-3 py-1.5 transition-colors hover:bg-accent {router.current.name === 'settings' ? 'bg-primary/10 text-primary font-medium' : ''}">Settings</a>
-      {#if auth.isLoggedIn}
-        <span class="px-2 text-muted-foreground">Hi, {auth.user?.username}</span>
-        <Button variant="outline" size="sm" onclick={() => auth.logout()}>Log out</Button>
-      {:else}
-        <Button size="sm" onclick={() => (showLogin = !showLogin)}>
-          {showLogin ? "Close" : "Log in"}
-        </Button>
-      {/if}
     </nav>
   </header>
 
   <main class="mx-auto w-full max-w-[1480px] flex-1 px-4 sm:px-6 py-8">
-    {#if showLogin && !auth.isLoggedIn}
-      <form class="mx-auto flex max-w-sm flex-col gap-3" onsubmit={onLoginSubmit}>
-        <label class="flex flex-col gap-1 text-sm">
-          Email
-          <input
-            type="email"
-            bind:value={email}
-            required
-            autocomplete="email"
-            class="h-9 rounded-md border border-input bg-background px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-        <label class="flex flex-col gap-1 text-sm">
-          Password
-          <input
-            type="password"
-            bind:value={password}
-            required
-            autocomplete="current-password"
-            class="h-9 rounded-md border border-input bg-background px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </label>
-        {#if auth.error}
-          <p class="text-sm text-destructive">{auth.error}</p>
-        {/if}
-        <Button type="submit" disabled={auth.loading}>
-          {auth.loading ? "Signing in…" : "Sign in"}
-        </Button>
-      </form>
-    {:else if router.current.name === "home"}
+    {#if router.current.name === "home"}
       <Home />
     {:else if router.current.name === "anime"}
       <AnimeDetail animeId={router.current.animeId} />

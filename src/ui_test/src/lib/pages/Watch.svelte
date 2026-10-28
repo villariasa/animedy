@@ -1,156 +1,53 @@
 <script lang="ts">
-  import { apiPost, ApiError } from "$lib/api/client";
-  import { apiPostCached } from "$lib/api/cached";
-  import type {
-    AnimeDetailsResponse,
-    EpisodeListItem,
-    EpisodesListResponse,
-    EpisodesSourcesResponse,
-    ProgressCompleteResponse,
-    ProgressGetResponse,
-    SkipGetResponse,
-    SkipSegment,
-    WatchNextGetResponse
-  } from "$lib/api/types";
-  import CountdownOverlay from "$lib/components/player/CountdownOverlay.svelte";
-  import Player from "$lib/components/player/Player.svelte";
-  import WhatsNextOverlay from "$lib/components/player/WhatsNextOverlay.svelte";
-  import { getLocalProgress, saveLocalProgress } from "$lib/db/local";
+  import { ApiError } from "$lib/api/client";
+  import { buildEpisodes, getAnimeDetails } from "$lib/api/anilist";
+  import type { AnimeDetails, EpisodeListItem } from "$lib/api/types";
+  import { progressKey, saveLocalProgress, getLocalProgressFor } from "$lib/db/local";
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
-  import { auth } from "$lib/stores/auth.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
 
+  // episodeId in the route is the episode NUMBER — streams come from embed
+  // providers keyed by (anilist id, episode number). No backend, no accounts.
   let { animeId, episodeId }: { animeId: number; episodeId: number } = $props();
 
-  let animeTitle = $state("");
+  let anime = $state<AnimeDetails | null>(null);
   let episodes = $state<EpisodeListItem[]>([]);
-  let sources = $state<EpisodesSourcesResponse | null>(null);
-  let skipSegments = $state<SkipSegment[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let drawerOpen = $state(false);
-  let whatsNext = $state<WatchNextGetResponse | null>(null);
-  let countdownActive = $state(false);
-  let resumePosition = $state(0);
-  let lastPosition = $state(0);
-  let lastDuration = $state(0);
 
-  let player = $state<ReturnType<typeof Player> | undefined>();
+  type StreamServer = "embed_auto" | "embed_vidsrc";
+  let selectedServer = $state<StreamServer>("embed_auto");
 
-  let autoPlay = $state(true);
-  let autoNext = $state(true);
-
-  let anilistId = $state<number | null>(null);
-
-  type StreamServer = "native" | "embed_auto" | "embed_vidsrc";
-  let selectedServer = $state<StreamServer>("native");
-
-  const currentEpisode = $derived(episodes.find((e) => e.episode_id === episodeId));
-  const currentEpisodeIndex = $derived(episodes.findIndex((e) => e.episode_id === episodeId));
-  const episodeNum = $derived(currentEpisode?.episode_number ?? 1);
-  const effectiveAnilistId = $derived(anilistId ?? animeId);
-  const serverEmbedUrls = $derived<Record<"embed_auto" | "embed_vidsrc", string>>({
-    embed_auto: `https://player.autoembed.cc/embed/anime/${effectiveAnilistId}/${episodeNum}`,
-    embed_vidsrc: `https://vidsrc.cc/v2/embed/anime/${effectiveAnilistId}/${episodeNum}`
-  });
-  const prevEpisode = $derived(
-    currentEpisodeIndex > 0 ? episodes[currentEpisodeIndex - 1] : undefined
-  );
-  const nextEpisode = $derived(
-    currentEpisodeIndex >= 0 && currentEpisodeIndex < episodes.length - 1
-      ? episodes[currentEpisodeIndex + 1]
-      : undefined
-  );
-
+  const animeTitle = $derived(anime ? displayTitle(anime.title_english, anime.title_romaji) : "");
+  const currentEpisode = $derived(episodes.find((e) => e.episode_number === episodeId));
+  const prevEpisode = $derived(episodes.find((e) => e.episode_number === episodeId - 1));
+  const nextEpisode = $derived(episodes.find((e) => e.episode_number === episodeId + 1));
   const episodeLabel = $derived(
     currentEpisode
       ? `Episode ${currentEpisode.episode_number}${currentEpisode.title ? ` · ${currentEpisode.title}` : ""}`
       : `Episode ${episodeId}`
   );
+  const serverEmbedUrls = $derived<Record<StreamServer, string>>({
+    embed_auto: `https://player.autoembed.cc/embed/anime/${animeId}/${episodeId}`,
+    embed_vidsrc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeId}`
+  });
 
   $effect(() => {
     const aId = animeId;
-    const epId = episodeId;
-    if (Number.isFinite(aId) && aId > 0 && Number.isFinite(epId) && epId > 0) {
-      loadEpisode(aId, epId);
+    const epNum = episodeId;
+    if (Number.isFinite(aId) && aId > 0 && Number.isFinite(epNum) && epNum > 0) {
+      loadEpisode(aId, epNum);
     }
   });
 
-  // Heartbeat: save progress every 5s while watching + flush on tab close
-  // and on leaving the page (PRD §7) — without this, history/continue-watching
-  // only update on explicit pause or episode end.
-  $effect(() => {
-    const heartbeatTimer = setInterval(() => void saveProgress(), 5000);
-    const flush = () => void saveProgress();
-    window.addEventListener("beforeunload", flush);
-    return () => {
-      clearInterval(heartbeatTimer);
-      window.removeEventListener("beforeunload", flush);
-      void saveProgress();
-    };
-  });
-
-  // Persist Auto Play / Auto Next toggle flips to settings.
-  $effect(() => {
-    if (
-      settings.loaded &&
-      (autoPlay !== settings.current.autoplay || autoNext !== settings.current.auto_next)
-    ) {
-      void settings.save({ autoplay: autoPlay, auto_next: autoNext });
-    }
-  });
-
-  async function loadEpisode(aId: number, epId: number): Promise<void> {
+  async function loadEpisode(aId: number, epNum: number): Promise<void> {
     loading = true;
     error = null;
-    whatsNext = null;
-    countdownActive = false;
-    resumePosition = 0;
-    lastPosition = 0;
-    lastDuration = 0;
     try {
-      await settings.load();
-      autoPlay = settings.current.autoplay;
-      autoNext = settings.current.auto_next;
-      const [detailsRes, episodesRes, sourcesRes, skipRes, progressRes, localProgress] = await Promise.all([
-        apiPostCached<AnimeDetailsResponse>("/api/anime/details", { anime_id: aId }).catch(() => null),
-        apiPostCached<EpisodesListResponse>("/api/episodes/list", { anime_id: aId }).catch(() => null),
-        apiPostCached<EpisodesSourcesResponse>("/api/episodes/sources", { episode_id: epId }),
-        apiPostCached<SkipGetResponse>("/api/skip/get", { episode_id: epId }).catch(() => null),
-        auth.isLoggedIn
-          ? apiPost<ProgressGetResponse>("/api/progress/get", { episode_id: epId }).catch(() => null)
-          : Promise.resolve(null),
-        auth.isLoggedIn ? Promise.resolve(undefined) : getLocalProgress(epId).catch(() => undefined)
-      ]);
-      animeTitle = detailsRes
-        ? displayTitle(detailsRes.anime.title_english, detailsRes.anime.title_romaji)
-        : "";
-      anilistId = detailsRes?.anime?.anilist_id ?? aId;
-      episodes = episodesRes?.episodes ?? [];
-      sources = sourcesRes;
-      skipSegments = skipRes?.segments ?? [];
-      if (progressRes && !progressRes.completed && progressRes.position_seconds > 0) {
-        resumePosition = progressRes.position_seconds;
-      } else if (localProgress && !localProgress.completed && localProgress.position_seconds > 0) {
-        resumePosition = localProgress.position_seconds;
-      }
-
-      // Immediately register in local progress so it appears in History even before playback starts
-      const ep = episodesRes?.episodes?.find((e) => e.episode_id === epId);
-      await saveLocalProgress({
-        episode_id: epId,
-        anime_id: aId,
-        position_seconds: resumePosition || (localProgress?.position_seconds ?? 0),
-        duration_seconds: localProgress?.duration_seconds ?? 1440,
-        completed: localProgress?.completed ?? false,
-        last_watched_at: new Date().toISOString(),
-        title_english: detailsRes?.anime?.title_english ?? animeTitle,
-        title_romaji: detailsRes?.anime?.title_romaji ?? animeTitle,
-        episode_number: ep?.episode_number ?? 1,
-        episode_title: ep?.title ?? `Episode ${ep?.episode_number ?? 1}`,
-        cover_image: detailsRes?.anime?.cover_image ?? ep?.thumbnail ?? null
-      }).catch(() => undefined);
+      anime = await getAnimeDetails(aId);
+      episodes = buildEpisodes(anime);
+      await registerInHistory(aId, epNum);
     } catch (err) {
       error = err instanceof ApiError ? err.message : "Failed to load episode.";
     } finally {
@@ -158,76 +55,50 @@
     }
   }
 
-  function onPlayerTime(currentTime: number, duration: number): void {
-    lastPosition = currentTime;
-    lastDuration = duration;
-    if (resumePosition > 0 && currentTime < 1) {
-      player?.seekTo(resumePosition);
-      resumePosition = 0;
-    }
+  // Record the watch in IndexedDB so History / Continue Watching work —
+  // playback itself happens inside a cross-origin embed, so "opened the
+  // episode" is the signal we track.
+  async function registerInHistory(aId: number, epNum: number): Promise<void> {
+    const existing = await getLocalProgressFor(aId, epNum).catch(() => undefined);
+    const durationSeconds = anime?.episode_duration ? anime.episode_duration * 60 : 1440;
+    await saveLocalProgress({
+      episode_id: progressKey(aId, epNum),
+      anime_id: aId,
+      position_seconds: existing?.position_seconds ?? 0,
+      duration_seconds: existing?.duration_seconds ?? durationSeconds,
+      completed: existing?.completed ?? false,
+      last_watched_at: new Date().toISOString(),
+      title_english: anime?.title_english ?? null,
+      title_romaji: anime?.title_romaji ?? null,
+      episode_number: epNum,
+      episode_title: currentEpisode?.title ?? `Episode ${epNum}`,
+      cover_image: anime?.cover_image ?? null
+    }).catch(() => undefined);
   }
 
-  async function saveProgress(completed = false): Promise<void> {
-    const pos = Math.floor(lastPosition);
-    const dur = Math.floor(lastDuration || 1440);
-    const ep = currentEpisode ?? episodes.find((e) => e.episode_id === episodeId);
-    if (auth.isLoggedIn) {
-      if (dur > 0 && pos > 0) {
-        await apiPost("/api/progress/save", {
-          episode_id: episodeId,
-          position_seconds: pos,
-          duration_seconds: dur
-        }).catch(() => undefined);
-      }
-    } else {
-      await saveLocalProgress({
-        episode_id: episodeId,
-        anime_id: animeId,
-        position_seconds: pos,
-        duration_seconds: dur,
-        completed,
-        last_watched_at: new Date().toISOString(),
-        title_english: animeTitle,
-        title_romaji: animeTitle,
-        episode_number: ep?.episode_number ?? 1,
-        episode_title: ep?.title ?? `Episode ${ep?.episode_number ?? 1}`,
-        cover_image: ep?.thumbnail ?? null
-      }).catch(() => undefined);
-    }
-  }
-
-  async function onEnded(): Promise<void> {
-    if (auth.isLoggedIn) {
-      await apiPost<ProgressCompleteResponse>("/api/progress/complete", { episode_id: episodeId }).catch(
-        () => undefined
-      );
-    } else {
-      await saveProgress(true);
-    }
+  async function markWatched(): Promise<void> {
+    const durationSeconds = anime?.episode_duration ? anime.episode_duration * 60 : 1440;
+    await saveLocalProgress({
+      episode_id: progressKey(animeId, episodeId),
+      anime_id: animeId,
+      position_seconds: durationSeconds,
+      duration_seconds: durationSeconds,
+      completed: true,
+      last_watched_at: new Date().toISOString(),
+      title_english: anime?.title_english ?? null,
+      title_romaji: anime?.title_romaji ?? null,
+      episode_number: episodeId,
+      episode_title: currentEpisode?.title ?? `Episode ${episodeId}`,
+      cover_image: anime?.cover_image ?? null
+    }).catch(() => undefined);
     if (nextEpisode) {
-      if (autoNext) {
-        countdownActive = true;
-      }
-    } else {
-      // End of this series → "What's Next?" overlay from the continuation engine.
-      whatsNext = await apiPost<WatchNextGetResponse>("/api/watch-next/get", { anime_id: animeId }).catch(
-        () => null
-      );
+      goToEpisode(nextEpisode.episode_number);
     }
   }
 
-  function onWatchNext(): void {
-    const target = whatsNext;
-    whatsNext = null;
-    if (target?.anime && target.episode) {
-      router.go(`/watch/${target.anime.anime_id}/${target.episode.episode_id}`);
-    }
-  }
-
-  function goToEpisode(epId: number): void {
+  function goToEpisode(epNum: number): void {
     drawerOpen = false;
-    countdownActive = false;
-    router.go(`/watch/${animeId}/${epId}`);
+    router.go(`/watch/${animeId}/${epNum}`);
   }
 </script>
 
@@ -247,9 +118,9 @@
       Return to Anime
     </button>
   </div>
-{:else if sources}
+{:else if anime}
   <div class="relative flex flex-col gap-4">
-    <!-- Server Switcher (Multi-Provider Option A) -->
+    <!-- Server Switcher -->
     <div class="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 shadow-sm backdrop-blur">
       <div class="flex items-center gap-2">
         <span class="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary">
@@ -263,18 +134,10 @@
       <div class="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'native' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-          onclick={() => (selectedServer = 'native')}
-        >
-          Server 1 (Native HD)
-        </button>
-
-        <button
-          type="button"
           class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_auto' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
           onclick={() => (selectedServer = 'embed_auto')}
         >
-          Server 2 (AutoStream)
+          Server 1 (AutoStream)
         </button>
 
         <button
@@ -282,95 +145,21 @@
           class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors {selectedServer === 'embed_vidsrc' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
           onclick={() => (selectedServer = 'embed_vidsrc')}
         >
-          Server 3 (VidSrc)
+          Server 2 (VidSrc)
         </button>
-
-        {#if sources.official_url}
-          <a
-            href={sources.official_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-500 transition-colors hover:bg-amber-500/25"
-            title="Open official licensed episode"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3" aria-hidden="true">
-              <path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h4a.75.75 0 0 1 0 1.5h-4Z" clip-rule="evenodd" />
-              <path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 0 0 1.06.053L16.5 4.44v2.81a.75.75 0 0 0 1.5 0v-4.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0 0 1.5h2.553l-9.056 8.194a.75.75 0 0 0-.053 1.06Z" clip-rule="evenodd" />
-            </svg>
-            Official Release
-          </a>
-        {/if}
       </div>
     </div>
 
-    {#if selectedServer === "native" && sources.stream_url.includes("anime-clip.webm")}
-      <div class="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200">
-        <div class="flex items-center gap-2">
-          <span class="rounded bg-amber-500/25 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-300">Action Demo Clip</span>
-          <span>Playing local action preview (1 min). Switch to <strong>Server 2 (AutoStream)</strong> or <strong>Server 3 (VidSrc)</strong> above for full episodes.</span>
-        </div>
-        {#if sources.official_url}
-          <a
-            href={sources.official_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-bold text-black transition-opacity hover:opacity-90"
-          >
-            Watch Full on {sources.official_site || "Crunchyroll"} ↗
-          </a>
-        {/if}
-      </div>
-    {/if}
-
     <div class="relative">
-      {#if selectedServer === "native"}
-      <Player
-        bind:this={player}
-        streamUrl={sources.stream_url}
-        subtitles={sources.subtitles}
-        qualities={sources.qualities}
-        {skipSegments}
-        title={animeTitle}
-        {episodeLabel}
-        canPrev={prevEpisode !== undefined}
-        canNext={nextEpisode !== undefined}
-        onprev={() => prevEpisode && goToEpisode(prevEpisode.episode_id)}
-        onnext={() => nextEpisode && goToEpisode(nextEpisode.episode_id)}
-        ontoggledrawer={() => (drawerOpen = !drawerOpen)}
-        ontimeupdate={onPlayerTime}
-        onpausesave={() => void saveProgress()}
-        onended={() => void onEnded()}
-        autoSkipIntro={settings.current.auto_skip_intro}
-        autoSkipOutro={settings.current.auto_skip_outro}
-        autoFullscreen={settings.current.auto_fullscreen}
-        initialSpeed={settings.current.playback_speed}
-        initialVolume={settings.current.volume}
-        initialSubtitleLang={settings.current.subtitle_lang || null}
-        bind:autoPlay
-        bind:autoNext
-      />
-      {:else}
-        <div class="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black shadow-lg">
-          <iframe
-            src={serverEmbedUrls[selectedServer]}
-            title="{animeTitle} - {episodeLabel}"
-            class="h-full w-full border-0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen
-          ></iframe>
-        </div>
-      {/if}
-      {#if whatsNext}
-        <WhatsNextOverlay watchNext={whatsNext} onwatch={onWatchNext} onclose={() => (whatsNext = null)} />
-      {/if}
-      {#if countdownActive && nextEpisode}
-        <CountdownOverlay
-          label={`Up next: Episode ${nextEpisode.episode_number}${nextEpisode.title ? ` · ${nextEpisode.title}` : ""}`}
-          seconds={settings.current.countdown_seconds}
-          onconfirm={() => nextEpisode && goToEpisode(nextEpisode.episode_id)}
-          oncancel={() => (countdownActive = false)}
-        />
-      {/if}
+      <div class="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black shadow-lg">
+        <iframe
+          src={serverEmbedUrls[selectedServer]}
+          title="{animeTitle} - {episodeLabel}"
+          class="h-full w-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen
+        ></iframe>
+      </div>
     </div>
 
     <!-- Navigation & Episode Selector Controls Bar -->
@@ -388,26 +177,22 @@
 
       <!-- Quick Episode Switch Buttons -->
       <div class="flex flex-wrap items-center gap-2">
-        {#if sources.official_url}
-          <a
-            href={sources.official_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-500 transition-colors hover:bg-amber-500/25"
-            title="Open official licensed episode"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
-              <path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 1 1.5 0v4A2.25 2.25 0 0 1 12.75 17h-8.5A2.25 2.25 0 0 1 2 14.75v-8.5A2.25 2.25 0 0 1 4.25 4h4a.75.75 0 0 1 0 1.5h-4Z" clip-rule="evenodd" />
-              <path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 0 0 1.06.053L16.5 4.44v2.81a.75.75 0 0 0 1.5 0v-4.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0 0 1.5h2.553l-9.056 8.194a.75.75 0 0 0-.053 1.06Z" clip-rule="evenodd" />
-            </svg>
-            Official Release ({sources.official_site || "Crunchyroll"})
-          </a>
-        {/if}
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-semibold text-green-500 transition-colors hover:bg-green-500/25"
+          onclick={() => void markWatched()}
+          title="Mark this episode watched and go to the next one"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
+            <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
+          </svg>
+          Mark Watched{nextEpisode ? " → Next" : ""}
+        </button>
         <button
           type="button"
           disabled={!prevEpisode}
           class="inline-flex items-center gap-1 rounded-lg border border-border/80 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
-          onclick={() => prevEpisode && goToEpisode(prevEpisode.episode_id)}
+          onclick={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
           title="Previous Episode"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
@@ -431,7 +216,7 @@
           type="button"
           disabled={!nextEpisode}
           class="inline-flex items-center gap-1 rounded-lg border border-border/80 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
-          onclick={() => nextEpisode && goToEpisode(nextEpisode.episode_id)}
+          onclick={() => nextEpisode && goToEpisode(nextEpisode.episode_number)}
           title="Next Episode"
         >
           <span class="hidden sm:inline">Next</span>
@@ -464,20 +249,20 @@
           </button>
         </header>
         <ul class="divide-y divide-border/50 overflow-y-auto p-1">
-          {#each episodes as ep (ep.episode_id)}
+          {#each episodes as ep (ep.episode_number)}
             <li>
               <button
                 type="button"
-                class="flex w-full items-center gap-3 rounded-lg p-2.5 text-left text-sm transition-colors hover:bg-accent {ep.episode_id ===
+                class="flex w-full items-center gap-3 rounded-lg p-2.5 text-left text-sm transition-colors hover:bg-accent {ep.episode_number ===
                 episodeId
                   ? 'bg-primary/15 font-semibold text-primary ring-1 ring-primary/40'
                   : ''}"
-                onclick={() => goToEpisode(ep.episode_id)}
+                onclick={() => goToEpisode(ep.episode_number)}
               >
                 <!-- Thumbnail Preview Box -->
                 <div class="relative h-12 w-20 shrink-0 overflow-hidden rounded-md bg-muted shadow-sm">
-                  {#if ep.thumbnail}
-                    <img src={ep.thumbnail} alt="" class="h-full w-full object-cover" />
+                  {#if anime.cover_image}
+                    <img src={anime.cover_image} alt="" class="h-full w-full object-cover" />
                   {/if}
                   <span class="absolute top-0.5 left-0.5 rounded bg-black/80 px-1 py-0.2 text-[9px] font-bold text-white">
                     EP {ep.episode_number}

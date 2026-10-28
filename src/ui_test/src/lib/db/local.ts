@@ -45,8 +45,21 @@ function db(): Promise<IDBPDatabase<AnimedyDB>> {
   return dbPromise;
 }
 
+/** Unique IndexedDB key per (anime, episode number) — episode "ids" are just
+ * episode numbers now that streams come from embed providers. */
+export function progressKey(animeId: number, episodeNumber: number): number {
+  return animeId * 10000 + episodeNumber;
+}
+
 export async function getLocalProgress(episodeId: number): Promise<LocalProgress | undefined> {
   return (await db()).get("progress", episodeId);
+}
+
+export async function getLocalProgressFor(
+  animeId: number,
+  episodeNumber: number
+): Promise<LocalProgress | undefined> {
+  return (await db()).get("progress", progressKey(animeId, episodeNumber));
 }
 
 export async function saveLocalProgress(progress: LocalProgress): Promise<void> {

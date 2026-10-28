@@ -1,7 +1,5 @@
 <script lang="ts">
-  import type { MetadataSource, SkipSource } from "$lib/api/types";
   import { Button } from "$lib/components/ui/button";
-  import { auth } from "$lib/stores/auth.svelte";
   import { settings } from "$lib/stores/settings.svelte";
 
   let saved = $state(false);
@@ -27,9 +25,7 @@
 
 <h2 class="mb-1 text-xl font-semibold">Settings</h2>
 <p class="mb-6 text-sm text-muted-foreground">
-  {auth.isLoggedIn
-    ? "Synced to your account across devices."
-    : "Guest mode — settings are stored on this device only."}
+  Stored on this device only — no account needed.
 </p>
 
 <form class="flex max-w-lg flex-col gap-6" onsubmit={onSubmit}>
@@ -90,31 +86,6 @@
     </label>
   </fieldset>
 
-  <fieldset class="flex flex-col gap-3 rounded-lg border border-border p-4">
-    <legend class="px-1 text-sm font-medium">Data sources</legend>
-    <label class="flex items-center justify-between gap-3 text-sm">
-      Metadata source
-      <select
-        value={settings.current.metadata_source}
-        onchange={(e) => (settings.current.metadata_source = e.currentTarget.value as MetadataSource)}
-        class={input}
-      >
-        <option value="anilist">AniList</option>
-        <option value="mal">MyAnimeList (Jikan)</option>
-      </select>
-    </label>
-    <label class="flex items-center justify-between gap-3 text-sm">
-      Skip-timestamp source
-      <select
-        value={settings.current.skip_source}
-        onchange={(e) => (settings.current.skip_source = e.currentTarget.value as SkipSource)}
-        class={input}
-      >
-        <option value="aniskip">AniSkip</option>
-        <option value="manual">Manual</option>
-      </select>
-    </label>
-  </fieldset>
 
   <div class="flex items-center gap-3">
     <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save settings"}</Button>
