@@ -31,7 +31,7 @@
     <span class="text-xs text-muted-foreground">
       {Math.round(percent)}% · {formatRemaining(item.remaining_seconds)}
     </span>
-    <Button size="sm" onclick={() => router.go(`/watch/${item.anime_id}/${item.episode_id}`)}>
+    <Button size="sm" onclick={() => router.go(`/watch/${item.anime_id}/${item.episode_number}`)}>
       Continue
     </Button>
   </footer>

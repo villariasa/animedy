@@ -17,6 +17,49 @@
   let error = $state<string | null>(null);
   let loading = $state(true);
 
+  const CHUNK_SIZE = 50;
+  let activeChunkIndex = $state(0);
+  let jumpQuery = $state("");
+  let viewMode = $state<"detailed" | "compact">("detailed");
+
+  const chunks = $derived.by(() => {
+    const total = episodes.length;
+    if (total <= 30) return [];
+    const list: Array<{ start: number; end: number; label: string }> = [];
+    for (let i = 0; i < total; i += CHUNK_SIZE) {
+      const start = i + 1;
+      const end = Math.min(i + CHUNK_SIZE, total);
+      list.push({ start, end, label: `${start} - ${end}` });
+    }
+    return list;
+  });
+
+  const displayedEpisodes = $derived.by(() => {
+    const q = jumpQuery.trim();
+    if (q) {
+      const num = parseInt(q, 10);
+      if (!isNaN(num)) {
+        return episodes.filter((ep) => String(ep.episode_number).includes(q));
+      }
+      return episodes.filter((ep) => ep.title?.toLowerCase().includes(q.toLowerCase()));
+    }
+    if (chunks.length > 0) {
+      const chunk = chunks[activeChunkIndex] ?? chunks[0];
+      if (chunk) {
+        return episodes.slice(chunk.start - 1, chunk.end);
+      }
+    }
+    return episodes;
+  });
+
+  function handleJump(e?: Event): void {
+    e?.preventDefault();
+    const num = parseInt(jumpQuery.trim(), 10);
+    if (!isNaN(num) && num >= 1 && num <= episodes.length) {
+      router.go(`/watch/${anime?.id}/${num}`);
+    }
+  }
+
   const title = $derived(anime ? displayTitle(anime.title_english, anime.title_romaji) : "");
   const metaLine = $derived(
     anime
@@ -196,24 +239,116 @@
     {/if}
 
     <!-- Episodes Section with 16:9 Image Preview Boxes and Descriptive Titles -->
-    <section aria-label="Episodes">
-      <div class="mb-4 flex items-center justify-between">
+    <section aria-label="Episodes" class="flex flex-col gap-4">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 class="text-xl font-bold tracking-tight">Episodes</h3>
           <p class="text-xs text-muted-foreground">Select an episode preview to stream</p>
         </div>
-        <span class="rounded-md bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-          {episodes.length} {episodes.length === 1 ? "Episode" : "Episodes"}
-        </span>
+
+        <div class="flex items-center gap-2">
+          <!-- View Switcher (Detailed List vs Fast Column Grid) -->
+          <div class="inline-flex rounded-lg border border-border bg-card/60 p-0.5 text-xs">
+            <button
+              type="button"
+              class="flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors {viewMode === 'detailed' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+              onclick={() => (viewMode = 'detailed')}
+              title="Detailed view with thumbnails"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+              List
+            </button>
+            <button
+              type="button"
+              class="flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors {viewMode === 'compact' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+              onclick={() => (viewMode = 'compact')}
+              title="Fast columns grid for quick selection"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+              </svg>
+              Grid ({episodes.length})
+            </button>
+          </div>
+
+          <span class="rounded-md bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+            {episodes.length} {episodes.length === 1 ? "Episode" : "Episodes"}
+          </span>
+        </div>
       </div>
 
-      {#if episodes.length === 0}
+      <!-- Episode Range Chunks & Jump Bar (For 30+ episodes e.g. 200 episodes) -->
+      {#if chunks.length > 0 || episodes.length > 25}
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/60 p-2.5 shadow-sm backdrop-blur">
+          {#if chunks.length > 0}
+            <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+              <span class="text-xs font-semibold text-muted-foreground mr-1">Range:</span>
+              {#each chunks as chunk, idx}
+                <button
+                  type="button"
+                  class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap {activeChunkIndex === idx && !jumpQuery ? 'bg-primary text-primary-foreground shadow-sm font-bold' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                  onclick={() => { activeChunkIndex = idx; jumpQuery = ""; }}
+                >
+                  {chunk.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Quick Jump Input -->
+          <form onsubmit={handleJump} class="flex items-center gap-1.5 ml-auto">
+            <div class="relative flex items-center">
+              <input
+                type="text"
+                bind:value={jumpQuery}
+                placeholder="Jump ep # (e.g. 190)"
+                class="h-8 w-36 sm:w-44 rounded-lg border border-border/80 bg-background/80 px-2.5 text-xs text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {#if jumpQuery}
+                <button
+                  type="button"
+                  onclick={() => (jumpQuery = "")}
+                  class="absolute right-2 text-muted-foreground hover:text-foreground text-xs"
+                  aria-label="Clear jump query"
+                >
+                  ✕
+                </button>
+              {/if}
+            </div>
+            <button
+              type="submit"
+              class="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+            >
+              Go
+            </button>
+          </form>
+        </div>
+      {/if}
+
+      {#if displayedEpisodes.length === 0}
         <p class="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-          No episodes found for this series.
+          No episodes found matching your filter.
         </p>
+      {:else if viewMode === "compact"}
+        <!-- Quick Column Grid (For rapid 1-click selection in 10 columns) -->
+        <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 rounded-xl border border-border bg-card/40 p-3 backdrop-blur">
+          {#each displayedEpisodes as ep (ep.episode_number)}
+            <button
+              type="button"
+              class="group flex flex-col items-center justify-center rounded-lg border border-border/70 bg-card/80 py-2.5 px-1 text-center transition-all hover:border-primary hover:bg-primary/10 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onclick={() => router.go(`/watch/${anime?.id}/${ep.episode_number}`)}
+              title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}` : `Episode ${ep.episode_number}`}
+            >
+              <span class="text-xs font-bold text-foreground group-hover:text-primary">{ep.episode_number}</span>
+              <span class="text-[9px] uppercase tracking-wider text-muted-foreground/80">EP</span>
+            </button>
+          {/each}
+        </div>
       {:else}
         <ul class="divide-y divide-border/50 rounded-xl border border-border bg-card/40 backdrop-blur">
-          {#each episodes as ep (ep.episode_id)}
+          {#each displayedEpisodes as ep (ep.episode_id)}
             {@const previewImg = ep.thumbnail || anime.banner_image || anime.cover_image}
             <li>
               <button

@@ -16,6 +16,47 @@
   let error = $state<string | null>(null);
   let drawerOpen = $state(false);
 
+  const DRAWER_CHUNK_SIZE = 50;
+  let drawerChunkIndex = $state(0);
+  let drawerQuery = $state("");
+  let drawerViewMode = $state<"list" | "grid">("grid");
+
+  const drawerChunks = $derived.by(() => {
+    const total = episodes.length;
+    if (total <= 30) return [];
+    const list: Array<{ start: number; end: number; label: string }> = [];
+    for (let i = 0; i < total; i += DRAWER_CHUNK_SIZE) {
+      const start = i + 1;
+      const end = Math.min(i + DRAWER_CHUNK_SIZE, total);
+      list.push({ start, end, label: `${start}-${end}` });
+    }
+    return list;
+  });
+
+  $effect(() => {
+    const epNum = episodeId;
+    if (epNum > 0 && drawerChunks.length > 0) {
+      const matchingIdx = drawerChunks.findIndex((c) => epNum >= c.start && epNum <= c.end);
+      if (matchingIdx >= 0) {
+        drawerChunkIndex = matchingIdx;
+      }
+    }
+  });
+
+  const displayedDrawerEpisodes = $derived.by(() => {
+    const q = drawerQuery.trim();
+    if (q) {
+      return episodes.filter((ep) => String(ep.episode_number).includes(q) || ep.title?.toLowerCase().includes(q.toLowerCase()));
+    }
+    if (drawerChunks.length > 0) {
+      const chunk = drawerChunks[drawerChunkIndex] ?? drawerChunks[0];
+      if (chunk) {
+        return episodes.slice(chunk.start - 1, chunk.end);
+      }
+    }
+    return episodes;
+  });
+
   type StreamServer = "embed_animekai" | "embed_videasy" | "embed_vidsrc_cc" | "embed_vidlink";
   let selectedServer = $state<StreamServer>("embed_animekai");
   let frameBox = $state<HTMLDivElement | null>(null);
@@ -53,8 +94,12 @@
 
   $effect(() => {
     const aId = animeId;
-    const epNum = episodeId;
-    if (Number.isFinite(aId) && aId > 0 && Number.isFinite(epNum) && epNum > 0) {
+    let epNum = episodeId;
+    // Old links/history rows sometimes carry the IndexedDB storage key
+    // (animeId*10000+ep) instead of the episode number — auto-correct them.
+    if (epNum > 10000 && Math.floor(epNum / 10000) === aId) {
+      router.go(`/watch/${aId}/${epNum % 10000}`);
+    } else if (Number.isFinite(aId) && aId > 0 && Number.isFinite(epNum) && epNum > 0) {
       loadEpisode(aId, epNum);
     }
   });
@@ -283,55 +328,131 @@
 
     {#if drawerOpen}
       <aside
-        class="absolute right-0 top-0 z-20 flex max-h-[85vh] w-80 flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-2xl backdrop-blur"
+        class="absolute right-0 top-0 z-30 flex max-h-[88vh] w-80 sm:w-96 flex-col overflow-hidden rounded-2xl border border-border bg-card/95 shadow-2xl backdrop-blur-xl"
         aria-label="Episode list"
       >
-        <header class="flex items-center justify-between border-b border-border px-4 py-3">
-          <div>
-            <span class="text-sm font-bold">Episodes</span>
-            <span class="ml-1 text-xs text-muted-foreground">({episodes.length})</span>
+        <header class="flex items-center justify-between border-b border-border/80 px-4 py-3 bg-muted/30">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-bold text-foreground">Episodes</span>
+            <span class="rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">({episodes.length})</span>
           </div>
-          <button
-            type="button"
-            class="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            onclick={() => (drawerOpen = false)}
-            aria-label="Close episode list"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </header>
-        <ul class="divide-y divide-border/50 overflow-y-auto p-1">
-          {#each episodes as ep (ep.episode_number)}
-            <li>
+
+          <div class="flex items-center gap-2">
+            <!-- List vs Grid toggle -->
+            <div class="inline-flex rounded-lg border border-border bg-card p-0.5 text-xs">
               <button
                 type="button"
-                class="flex w-full items-center gap-3 rounded-lg p-2.5 text-left text-sm transition-colors hover:bg-accent {ep.episode_number ===
-                episodeId
-                  ? 'bg-primary/15 font-semibold text-primary ring-1 ring-primary/40'
-                  : ''}"
-                onclick={() => goToEpisode(ep.episode_number)}
+                class="rounded px-2 py-0.5 font-medium transition-colors {drawerViewMode === 'grid' ? 'bg-primary text-primary-foreground font-bold shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (drawerViewMode = 'grid')}
+                title="5-column compact grid"
               >
-                <!-- Thumbnail Preview Box -->
-                <div class="relative h-12 w-20 shrink-0 overflow-hidden rounded-md bg-muted shadow-sm">
-                  {#if anime.cover_image}
-                    <img src={anime.cover_image} alt="" class="h-full w-full object-cover" />
-                  {/if}
-                  <span class="absolute top-0.5 left-0.5 rounded bg-black/80 px-1 py-0.2 text-[9px] font-bold text-white">
-                    EP {ep.episode_number}
-                  </span>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-xs font-medium">{ep.title ?? `Episode ${ep.episode_number}`}</p>
-                  {#if ep.duration_seconds}
-                    <p class="text-[10px] text-muted-foreground">{Math.round(ep.duration_seconds / 60)} min</p>
-                  {/if}
-                </div>
+                Grid
               </button>
-            </li>
-          {/each}
-        </ul>
+              <button
+                type="button"
+                class="rounded px-2 py-0.5 font-medium transition-colors {drawerViewMode === 'list' ? 'bg-primary text-primary-foreground font-bold shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (drawerViewMode = 'list')}
+                title="Detailed list"
+              >
+                List
+              </button>
+            </div>
+
+            <button
+              type="button"
+              class="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onclick={() => (drawerOpen = false)}
+              aria-label="Close episode list"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <!-- Range Chunks Pills & Quick Search -->
+        <div class="flex flex-col gap-2 border-b border-border/60 p-2.5 bg-background/50">
+          {#if drawerChunks.length > 0}
+            <div class="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
+              {#each drawerChunks as chunk, idx}
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-1 text-[11px] font-medium transition-colors whitespace-nowrap {drawerChunkIndex === idx && !drawerQuery ? 'bg-primary text-primary-foreground font-bold shadow-sm' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                  onclick={() => { drawerChunkIndex = idx; drawerQuery = ""; }}
+                >
+                  {chunk.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Quick Jump Search -->
+          <div class="relative flex items-center">
+            <input
+              type="text"
+              bind:value={drawerQuery}
+              placeholder="Filter ep # (e.g. 190)..."
+              class="h-7 w-full rounded-md border border-border/80 bg-muted/40 px-2.5 text-xs text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            {#if drawerQuery}
+              <button
+                type="button"
+                onclick={() => (drawerQuery = "")}
+                class="absolute right-2 text-muted-foreground hover:text-foreground text-xs"
+                aria-label="Clear filter"
+              >
+                ✕
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Drawer Content -->
+        {#if drawerViewMode === "grid"}
+          <!-- Rapid 5-column number grid for fast selection -->
+          <div class="grid grid-cols-5 gap-1.5 overflow-y-auto p-3 max-h-[60vh]">
+            {#each displayedDrawerEpisodes as ep (ep.episode_number)}
+              <button
+                type="button"
+                class="group flex flex-col items-center justify-center rounded-lg border p-2 text-center transition-all {ep.episode_number === episodeId ? 'border-primary bg-primary text-primary-foreground font-black shadow-md ring-2 ring-primary/40' : 'border border-border/70 bg-card hover:border-primary hover:bg-primary/10 hover:text-primary'}"
+                onclick={() => goToEpisode(ep.episode_number)}
+                title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}` : `Episode ${ep.episode_number}`}
+              >
+                <span class="text-xs font-bold leading-none">{ep.episode_number}</span>
+                <span class="text-[8px] uppercase tracking-wider opacity-70 mt-0.5">EP</span>
+              </button>
+            {/each}
+          </div>
+        {:else}
+          <!-- Detailed List -->
+          <ul class="divide-y divide-border/50 overflow-y-auto p-1 max-h-[60vh]">
+            {#each displayedDrawerEpisodes as ep (ep.episode_number)}
+              <li>
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-3 rounded-lg p-2 text-left text-sm transition-colors hover:bg-accent {ep.episode_number === episodeId ? 'bg-primary/15 font-semibold text-primary ring-1 ring-primary/40' : ''}"
+                  onclick={() => goToEpisode(ep.episode_number)}
+                >
+                  <div class="relative h-10 w-16 shrink-0 overflow-hidden rounded-md bg-muted shadow-sm">
+                    {#if anime.cover_image}
+                      <img src={anime.cover_image} alt="" class="h-full w-full object-cover" />
+                    {/if}
+                    <span class="absolute top-0.5 left-0.5 rounded bg-black/80 px-1 py-0.2 text-[8px] font-bold text-white">
+                      EP {ep.episode_number}
+                    </span>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs font-medium">{ep.title ?? `Episode ${ep.episode_number}`}</p>
+                    {#if ep.duration_seconds}
+                      <p class="text-[10px] text-muted-foreground">{Math.round(ep.duration_seconds / 60)} min</p>
+                    {/if}
+                  </div>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </aside>
     {/if}
   </div>

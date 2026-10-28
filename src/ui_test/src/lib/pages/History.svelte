@@ -37,7 +37,8 @@
         key: `${l.episode_id}-${l.last_watched_at}`,
         anime_id: l.anime_id,
         episode_id: l.episode_id,
-        episode_number: l.episode_number ?? (l.episode_id % 10000),
+        episode_number:
+          l.episode_number && l.episode_number < 10000 ? l.episode_number : l.episode_id % 10000,
         title: displayTitle(l.title_english ?? null, l.title_romaji ?? null) || `Anime #${l.anime_id}`,
         episode_title: l.episode_title,
         cover_image: l.cover_image ?? null,
@@ -174,7 +175,7 @@
 
             <!-- Action Button -->
             <div class="flex items-center justify-end gap-2 shrink-0">
-              <Button size="sm" class="gap-1 text-xs" onclick={() => router.go(`/watch/${item.anime_id}/${item.episode_id}`)}>
+              <Button size="sm" class="gap-1 text-xs" onclick={() => router.go(`/watch/${item.anime_id}/${item.episode_number}`)}>
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
                   <path d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11V15.89a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z" />
                 </svg>
