@@ -9,7 +9,7 @@ import { fetchAniListMediaExtras } from "../utils/anilist.js";
 import type { EpisodeRow } from "../interfaces/db.js";
 import type { EpisodeListItem, EpisodesListResponse, EpisodesSourcesResponse } from "../interfaces/api.js";
 
-const DEFAULT_ANIME_STREAM = "https://media.w3.org/2010/05/sintel/trailer.mp4";
+const DEFAULT_ANIME_STREAM = "/videos/anime-clip.webm";
 
 const DESCRIPTIVE_TITLES = [
   "The Awakening & New Beginning",
@@ -170,12 +170,12 @@ export async function episodesSourcesHandler(context: Context): Promise<Response
 
     const responseData: EpisodesSourcesResponse = {
       episode_id: episode?.id ?? parsed.data.episode_id,
-      stream_url: streamUrl,
+      stream_url: DEFAULT_ANIME_STREAM,
       subtitles: episode?.subtitles_json ?? [{ lang: "en", label: "English", url: "" }],
       qualities: [
-        { label: "1080p Master (Anime Release)", url: DEFAULT_ANIME_STREAM },
+        { label: "1080p Ultra HD (Anime Action)", url: "/videos/anime-clip.webm" },
         { label: "720p HLS Multi-Stream", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" },
-        { label: "480p Fast Stream", url: DEFAULT_ANIME_STREAM },
+        { label: "480p Fast Stream", url: "/videos/stream.mp4" },
       ],
       official_url: officialEp?.url ?? null,
       official_site: officialEp?.site ?? (officialEp?.url ? "Crunchyroll" : null),

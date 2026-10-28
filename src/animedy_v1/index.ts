@@ -68,9 +68,11 @@ app.post("/docs/file", async (context) => {
 // it can be opened directly in a browser.
 app.get("/docs", (context) => context.html(DOCS_PAGE_HTML));
 
-// Serve static assets and SPA frontend (built in src/ui_test/dist)
+// Serve static assets, videos, and SPA frontend
 app.use("/assets/*", serveStatic({ root: "./src/ui_test/dist" }));
 app.use("/icons/*", serveStatic({ root: "./src/ui_test/dist" }));
+app.use("/videos/*", serveStatic({ root: "./src/ui_test/public" }));
+app.use("/videos/*", serveStatic({ root: "./src/ui_test/dist" }));
 app.use("/manifest.webmanifest", serveStatic({ path: "./src/ui_test/dist/manifest.webmanifest" }));
 app.use("/favicon.ico", serveStatic({ path: "./src/ui_test/dist/favicon.ico" }));
 app.get("/", serveStatic({ path: "./src/ui_test/dist/index.html" }));

@@ -95,9 +95,24 @@
   function togglePlay(): void {
     if (video) {
       if (video.paused) {
-        void video.play();
+        const p = video.play();
+        if (p !== undefined) {
+          p.then(() => {
+            playing = true;
+          }).catch(() => {
+            // Unmuted playback blocked by browser, auto-mute and play
+            if (video) {
+              video.muted = true;
+              muted = true;
+              void video.play().then(() => {
+                playing = true;
+              }).catch(() => undefined);
+            }
+          });
+        }
       } else {
         video.pause();
+        playing = false;
       }
     }
   }
@@ -323,10 +338,11 @@
   <!-- svelte-ignore a11y_media_has_caption -->
   <video
     bind:this={video}
+    src={currentSrc && !currentSrc.includes(".m3u8") ? currentSrc : undefined}
     class="h-full w-full object-contain"
     playsinline
     preload="auto"
-    autoplay={autoPlay}
+    onplaying={() => (playing = true)}
     bind:currentTime
     bind:duration
     bind:volume
