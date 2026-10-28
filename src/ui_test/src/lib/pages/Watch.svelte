@@ -41,15 +41,18 @@
   let autoPlay = $state(true);
   let autoNext = $state(true);
 
+  let anilistId = $state<number | null>(null);
+
   type StreamServer = "native" | "embed_auto" | "embed_vidsrc";
   let selectedServer = $state<StreamServer>("native");
 
   const currentEpisode = $derived(episodes.find((e) => e.episode_id === episodeId));
   const currentEpisodeIndex = $derived(episodes.findIndex((e) => e.episode_id === episodeId));
   const episodeNum = $derived(currentEpisode?.episode_number ?? 1);
+  const effectiveAnilistId = $derived(anilistId ?? animeId);
   const serverEmbedUrls = $derived<Record<"embed_auto" | "embed_vidsrc", string>>({
-    embed_auto: `https://player.autoembed.cc/embed/anime/${animeId}/${episodeNum}`,
-    embed_vidsrc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeNum}`
+    embed_auto: `https://player.autoembed.cc/embed/anime/${effectiveAnilistId}/${episodeNum}`,
+    embed_vidsrc: `https://vidsrc.cc/v2/embed/anime/${effectiveAnilistId}/${episodeNum}`
   });
   const prevEpisode = $derived(
     currentEpisodeIndex > 0 ? episodes[currentEpisodeIndex - 1] : undefined
@@ -123,6 +126,7 @@
       animeTitle = detailsRes
         ? displayTitle(detailsRes.anime.title_english, detailsRes.anime.title_romaji)
         : "";
+      anilistId = detailsRes?.anime?.anilist_id ?? aId;
       episodes = episodesRes?.episodes ?? [];
       sources = sourcesRes;
       skipSegments = skipRes?.segments ?? [];
@@ -298,6 +302,25 @@
         {/if}
       </div>
     </div>
+
+    {#if selectedServer === "native" && sources.stream_url.includes("anime-clip.webm")}
+      <div class="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200">
+        <div class="flex items-center gap-2">
+          <span class="rounded bg-amber-500/25 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-300">Action Demo Clip</span>
+          <span>Playing local action preview (1 min). Switch to <strong>Server 2 (AutoStream)</strong> or <strong>Server 3 (VidSrc)</strong> above for full episodes.</span>
+        </div>
+        {#if sources.official_url}
+          <a
+            href={sources.official_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-bold text-black transition-opacity hover:opacity-90"
+          >
+            Watch Full on {sources.official_site || "Crunchyroll"} ↗
+          </a>
+        {/if}
+      </div>
+    {/if}
 
     <div class="relative">
       {#if selectedServer === "native"}

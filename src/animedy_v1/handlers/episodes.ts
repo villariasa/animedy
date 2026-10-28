@@ -170,7 +170,7 @@ export async function episodesSourcesHandler(context: Context): Promise<Response
 
     const responseData: EpisodesSourcesResponse = {
       episode_id: episode?.id ?? parsed.data.episode_id,
-      stream_url: DEFAULT_ANIME_STREAM,
+      stream_url: streamUrl,
       subtitles: episode?.subtitles_json ?? [{ lang: "en", label: "English", url: "" }],
       qualities: [
         { label: "1080p Ultra HD (Anime Action)", url: "/videos/anime-clip.webm" },

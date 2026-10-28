@@ -11,15 +11,20 @@ import { createThrottle } from "./throttle.js";
 const ANISKIP_BASE = "https://api.aniskip.com/v2";
 const throttle = createThrottle(500);
 
-async function fetchAniSkipTimes(malId: number, episodeNumber: number): Promise<AniSkipResult[]> {
+async function fetchAniSkipTimes(malId: number, episodeNumber: number, episodeLength = 1440): Promise<AniSkipResult[]> {
   return throttle(async () => {
-    const url = `${ANISKIP_BASE}/skip-times/${malId}/${episodeNumber}?types[]=op&types[]=ed`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) {
-      throw new Error(`AniSkip request failed with status ${res.status}`);
+    const epLength = Math.max(Math.round(episodeLength), 60);
+    const url = `${ANISKIP_BASE}/skip-times/${malId}/${episodeNumber}?types[]=op&types[]=ed&episodeLength=${epLength}`;
+    try {
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) {
+        return [];
+      }
+      const payload = (await res.json()) as AniSkipResponse;
+      return payload.found ? payload.results : [];
+    } catch {
+      return [];
     }
-    const payload = (await res.json()) as AniSkipResponse;
-    return payload.found ? payload.results : [];
   });
 }
 
