@@ -1,5 +1,7 @@
 <script lang="ts">
   import { apiPost, ApiError } from "$lib/api/client";
+  import { apiPostCached } from "$lib/api/cached";
+  import { getLocalProgress, saveLocalProgress } from "$lib/db/local";
   import type {
     AnimeDetailsResponse,
     EpisodeListItem,
@@ -84,14 +86,15 @@
       await settings.load();
       autoPlay = settings.current.autoplay;
       autoNext = settings.current.auto_next;
-      const [detailsRes, episodesRes, sourcesRes, skipRes, progressRes] = await Promise.all([
-        apiPost<AnimeDetailsResponse>("/api/anime/details", { anime_id: aId }).catch(() => null),
-        apiPost<EpisodesListResponse>("/api/episodes/list", { anime_id: aId }).catch(() => null),
-        apiPost<EpisodesSourcesResponse>("/api/episodes/sources", { episode_id: epId }),
-        apiPost<SkipGetResponse>("/api/skip/get", { episode_id: epId }).catch(() => null),
+      const [detailsRes, episodesRes, sourcesRes, skipRes, progressRes, localProgress] = await Promise.all([
+        apiPostCached<AnimeDetailsResponse>("/api/anime/details", { anime_id: aId }).catch(() => null),
+        apiPostCached<EpisodesListResponse>("/api/episodes/list", { anime_id: aId }).catch(() => null),
+        apiPostCached<EpisodesSourcesResponse>("/api/episodes/sources", { episode_id: epId }),
+        apiPostCached<SkipGetResponse>("/api/skip/get", { episode_id: epId }).catch(() => null),
         auth.isLoggedIn
           ? apiPost<ProgressGetResponse>("/api/progress/get", { episode_id: epId }).catch(() => null)
-          : Promise.resolve(null)
+          : Promise.resolve(null),
+        auth.isLoggedIn ? Promise.resolve(undefined) : getLocalProgress(epId).catch(() => undefined)
       ]);
       animeTitle = detailsRes
         ? displayTitle(detailsRes.anime.title_english, detailsRes.anime.title_romaji)
@@ -101,6 +104,8 @@
       skipSegments = skipRes?.segments ?? [];
       if (progressRes && !progressRes.completed && progressRes.position_seconds > 0) {
         resumePosition = progressRes.position_seconds;
+      } else if (localProgress && !localProgress.completed && localProgress.position_seconds > 0) {
+        resumePosition = localProgress.position_seconds;
       }
     } catch (err) {
       error = err instanceof ApiError ? err.message : "Failed to load episode.";
@@ -118,13 +123,24 @@
     }
   }
 
-  async function saveProgress(): Promise<void> {
-    if (auth.isLoggedIn && lastDuration > 0 && lastPosition > 0) {
-      await apiPost("/api/progress/save", {
-        episode_id: episodeId,
-        position_seconds: Math.floor(lastPosition),
-        duration_seconds: Math.floor(lastDuration)
-      }).catch(() => undefined);
+  async function saveProgress(completed = false): Promise<void> {
+    if (lastDuration > 0 && lastPosition > 0) {
+      if (auth.isLoggedIn) {
+        await apiPost("/api/progress/save", {
+          episode_id: episodeId,
+          position_seconds: Math.floor(lastPosition),
+          duration_seconds: Math.floor(lastDuration)
+        }).catch(() => undefined);
+      } else {
+        await saveLocalProgress({
+          episode_id: episodeId,
+          anime_id: animeId,
+          position_seconds: Math.floor(lastPosition),
+          duration_seconds: Math.floor(lastDuration),
+          completed,
+          last_watched_at: new Date().toISOString()
+        }).catch(() => undefined);
+      }
     }
   }
 
@@ -133,6 +149,8 @@
       await apiPost<ProgressCompleteResponse>("/api/progress/complete", { episode_id: episodeId }).catch(
         () => undefined
       );
+    } else {
+      await saveProgress(true);
     }
     if (nextEpisode) {
       if (autoNext) {
