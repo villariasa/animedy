@@ -145,7 +145,46 @@ export async function searchAnime(search: string): Promise<AnimeSearchResultItem
     }`,
     { search }
   );
-  return data.Page.media.map(toSearchItem);
+  if (data.Page.media.length > 0) {
+    return data.Page.media.map(toSearchItem);
+  }
+  // AniList search has ZERO typo/prefix tolerance ("Friere" → nothing).
+  // Fallback: Jikan (MAL) search IS fuzzy — take its MAL ids and resolve
+  // them back through AniList so results stay in our normal shape.
+  return searchViaJikan(search);
+}
+
+async function searchViaJikan(search: string): Promise<AnimeSearchResultItem[]> {
+  let items: AnimeSearchResultItem[] = [];
+  try {
+    const res = await fetch(
+      `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(search)}&limit=15&sfw=true`
+    );
+    if (res.ok) {
+      const payload = (await res.json()) as { data: Array<{ mal_id: number }> };
+      const malIds = payload.data.map((a) => a.mal_id).slice(0, 15);
+      if (malIds.length > 0) {
+        const mapped = await gql<{ Page: { media: AniListMedia[] } }>(
+          `anilist:malmap:${malIds.join(",")}`,
+          `query ($ids: [Int]) {
+            Page(page: 1, perPage: 15) {
+              media(idMal_in: $ids, type: ANIME, isAdult: false) { ${MEDIA_FIELDS} }
+            }
+          }`,
+          { ids: malIds }
+        );
+        // Preserve Jikan's relevance order.
+        const order = new Map(malIds.map((id, i) => [id, i]));
+        items = mapped.Page.media
+          .slice()
+          .sort((a, b) => (order.get(a.idMal ?? -1) ?? 99) - (order.get(b.idMal ?? -1) ?? 99))
+          .map(toSearchItem);
+      }
+    }
+  } catch {
+    items = [];
+  }
+  return items;
 }
 
 export type BrowseTag = "trending" | "popular" | "top_rated" | "this_week" | "this_month" | "new_releases";
