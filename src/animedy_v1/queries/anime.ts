@@ -77,6 +77,16 @@ export const INSERT_ANIME = `
     cached_at = VALUES(cached_at)
 `;
 
+export const UPDATE_ANIME_BY_ID = `
+  UPDATE anime
+  SET anilist_id = ?, mal_id = ?, title_romaji = ?, title_english = ?, title_native = ?,
+      synonyms = ?, format = ?, status = ?, season = ?, season_year = ?, start_date = ?,
+      end_date = ?, episode_count = ?, episode_duration = ?, description = ?,
+      cover_image = ?, banner_image = ?, franchise_key = ?, sequence_order = ?,
+      season_label = ?, arc_name = ?, metadata_json = ?, cached_at = ?
+  WHERE id = ?
+`;
+
 export const UPDATE_ANIME_FRANCHISE_ORDER = `
   UPDATE anime
   SET franchise_key = ?, sequence_order = ?, season_label = ?, arc_name = ?

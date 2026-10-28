@@ -48,6 +48,16 @@ export const UPSERT_EPISODE = `
     qualities_json = VALUES(qualities_json)
 `;
 
+export const SELECT_EPISODE_WITH_ANIME_MAL = `
+  SELECT e.id, e.anime_id, e.episode_number, e.title, e.duration_seconds, e.air_date,
+         e.thumbnail, e.stream_url, e.subtitles_json, e.qualities_json,
+         e.created_at, e.updated_at, a.mal_id
+  FROM episodes e
+  INNER JOIN anime a ON a.id = e.anime_id
+  WHERE e.id = ?
+  LIMIT 1
+`;
+
 export const SELECT_EPISODE_COUNT_BY_ANIME = `
   SELECT COUNT(*) AS total
   FROM episodes

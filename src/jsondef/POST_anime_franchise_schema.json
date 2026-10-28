@@ -1,0 +1,72 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/anime/franchise": {
+      "post": {
+        "summary": "Full franchise graph: ordered seasons/parts/movies/OVAs + recommended viewing order",
+        "tags": ["Anime"],
+        "security": [{ "bearerAuth": [] }],
+        "description": "Bearer token optional (guest-ok). Requires anime_id or anilist_id.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "anime_id": { "type": "integer", "minimum": 1 },
+                  "anilist_id": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Franchise graph retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "franchise_key": { "type": "string" },
+                        "entries": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "anime_id": { "type": "integer" },
+                              "anilist_id": { "type": ["integer", "null"] },
+                              "title_romaji": { "type": ["string", "null"] },
+                              "title_english": { "type": ["string", "null"] },
+                              "format": { "type": ["string", "null"] },
+                              "season_label": { "type": ["string", "null"] },
+                              "arc_name": { "type": ["string", "null"] },
+                              "sequence_order": { "type": ["integer", "null"] },
+                              "episode_count": { "type": ["integer", "null"] },
+                              "start_date": { "type": ["string", "null"] }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": { "description": "Validation failure or franchise graph unavailable" },
+          "502": { "description": "Metadata source unavailable and no cache" }
+        }
+      }
+    }
+  }
+}

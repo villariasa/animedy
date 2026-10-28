@@ -1,0 +1,52 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/anime/details": {
+      "post": {
+        "summary": "Full anime details (titles, dates, format, status, season/part label, arcs)",
+        "tags": ["Anime"],
+        "security": [{ "bearerAuth": [] }],
+        "description": "Bearer token optional (guest-ok). Requires anime_id or anilist_id.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "anime_id": { "type": "integer", "minimum": 1 },
+                  "anilist_id": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Anime details retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": { "anime": { "type": "object" } }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": { "description": "Validation failure" },
+          "502": { "description": "Metadata source unavailable and no cache" }
+        }
+      }
+    }
+  }
+}

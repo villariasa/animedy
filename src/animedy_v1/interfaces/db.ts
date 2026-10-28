@@ -66,6 +66,33 @@ export interface AnimeRow {
   updated_at: string;
 }
 
+// Shape used when upserting into the `anime` cache table from an external
+// source mapping (AniList or Jikan), prior to assignment of id/timestamps.
+export interface AnimeUpsertInput {
+  anilist_id: number | null;
+  mal_id: number | null;
+  title_romaji: string | null;
+  title_english: string | null;
+  title_native: string | null;
+  synonyms: string[] | null;
+  format: AnimeFormat | null;
+  status: AnimeStatus | null;
+  season: AnimeSeason | null;
+  season_year: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  episode_count: number | null;
+  episode_duration: number | null;
+  description: string | null;
+  cover_image: string | null;
+  banner_image: string | null;
+  franchise_key: string | null;
+  sequence_order: number | null;
+  season_label: string | null;
+  arc_name: string | null;
+  metadata_json: Record<string, unknown> | null;
+}
+
 export type RelationType =
   | "PREQUEL"
   | "SEQUEL"

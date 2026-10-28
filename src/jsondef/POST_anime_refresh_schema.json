@@ -1,0 +1,53 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/anime/refresh": {
+      "post": {
+        "summary": "Force re-fetch metadata from external source (cache bust) and re-walk franchise",
+        "tags": ["Anime"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "anime_id": { "type": "integer", "minimum": 1 },
+                  "anilist_id": { "type": "integer", "minimum": 1 },
+                  "metadata_source": { "type": "string", "enum": ["anilist", "mal"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Anime metadata refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": { "anime": { "type": "object" } }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "422": { "description": "Validation failure" },
+          "502": { "description": "Metadata source unavailable and no cache" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/skip/set": {
+      "post": {
+        "summary": "Store/override manual skip timestamps",
+        "tags": ["Skip"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["episode_id", "skip_type", "start_seconds", "end_seconds"],
+                "additionalProperties": false,
+                "properties": {
+                  "episode_id": { "type": "integer", "minimum": 1 },
+                  "skip_type": { "type": "string", "enum": ["intro", "outro", "recap"] },
+                  "start_seconds": { "type": "integer", "minimum": 0 },
+                  "end_seconds": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Manual skip segment saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "episode_id": { "type": "integer" },
+                        "skip_type": { "type": "string", "enum": ["intro", "outro", "recap"] },
+                        "start_seconds": { "type": "integer" },
+                        "end_seconds": { "type": "integer" },
+                        "source": { "type": "string", "enum": ["manual"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/skip/get": {
+      "post": {
+        "summary": "Intro/outro timestamps for an episode (selected skip source, fallback aniskip -> manual)",
+        "tags": ["Skip"],
+        "security": [{ "bearerAuth": [] }],
+        "description": "Bearer token optional (guest-ok); when present, uses the user's skip_source preference unless overridden in the body.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["episode_id"],
+                "additionalProperties": false,
+                "properties": {
+                  "episode_id": { "type": "integer", "minimum": 1 },
+                  "skip_source": { "type": "string", "enum": ["aniskip", "manual"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Skip segments retrieved (possibly empty)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "episode_id": { "type": "integer" },
+                        "segments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "skip_type": { "type": "string", "enum": ["intro", "outro", "recap"] },
+                              "start_seconds": { "type": "integer" },
+                              "end_seconds": { "type": "integer" },
+                              "source": { "type": "string", "enum": ["aniskip", "manual"] }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Episode not found" },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

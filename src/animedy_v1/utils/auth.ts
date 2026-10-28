@@ -92,3 +92,25 @@ export async function adminRequired(context: Context, next: Next): Promise<Respo
 export function getClaims(context: Context): JwtClaims {
   return context.get("jwtClaims") as JwtClaims;
 }
+
+export function getOptionalClaims(context: Context): JwtClaims | null {
+  return (context.get("jwtClaims") as JwtClaims | undefined) ?? null;
+}
+
+/**
+ * Hono middleware that attaches decoded claims to context when a valid
+ * Bearer token is present, but never blocks the request (guest mode).
+ * Use `getOptionalClaims` in handlers to read the result.
+ */
+export async function optionalAuth(context: Context, next: Next): Promise<void> {
+  const token = extractBearerToken(context);
+  if (token) {
+    try {
+      const claims = verifyToken(token);
+      context.set("jwtClaims", claims);
+    } catch {
+      // Invalid/expired token in optional-auth routes: proceed as guest.
+    }
+  }
+  await next();
+}

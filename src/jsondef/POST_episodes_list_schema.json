@@ -1,0 +1,64 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/episodes/list": {
+      "post": {
+        "summary": "Episode list for an anime",
+        "tags": ["Episodes"],
+        "security": [{ "bearerAuth": [] }],
+        "description": "Bearer token optional (guest-ok).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["anime_id"],
+                "additionalProperties": false,
+                "properties": { "anime_id": { "type": "integer", "minimum": 1 } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Episodes retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "episodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "episode_id": { "type": "integer" },
+                              "episode_number": { "type": "integer" },
+                              "title": { "type": ["string", "null"] },
+                              "duration_seconds": { "type": ["integer", "null"] },
+                              "air_date": { "type": ["string", "null"] },
+                              "thumbnail": { "type": ["string", "null"] }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": { "description": "Validation failure" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Animedy API", "version": "1.0.0" },
+  "paths": {
+    "/api/anime/search": {
+      "post": {
+        "summary": "Search anime (proxies selected metadata source, caches results)",
+        "tags": ["Anime"],
+        "security": [{ "bearerAuth": [] }],
+        "description": "Bearer token optional (guest-ok); when present, uses the user's metadata_source preference unless overridden in the body.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query"],
+                "additionalProperties": false,
+                "properties": {
+                  "query": { "type": "string", "minLength": 1, "maxLength": 255 },
+                  "metadata_source": { "type": "string", "enum": ["anilist", "mal"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "http_code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "anime_id": { "type": "integer" },
+                              "anilist_id": { "type": ["integer", "null"] },
+                              "mal_id": { "type": ["integer", "null"] },
+                              "title_romaji": { "type": ["string", "null"] },
+                              "title_english": { "type": ["string", "null"] },
+                              "cover_image": { "type": ["string", "null"] },
+                              "format": { "type": ["string", "null"] },
+                              "status": { "type": ["string", "null"] },
+                              "season_year": { "type": ["integer", "null"] }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": { "description": "Validation failure" },
+          "502": { "description": "Metadata source unavailable" }
+        }
+      }
+    }
+  }
+}

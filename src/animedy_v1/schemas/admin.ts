@@ -15,7 +15,7 @@ const qualityVariantSchema = z
   })
   .strict();
 
-export const adminEpisodesUpsertSchema = z
+const adminEpisodeItemSchema = z
   .object({
     anime_id: z.number().int().positive(),
     episode_number: z.number().int().positive(),
@@ -29,4 +29,11 @@ export const adminEpisodesUpsertSchema = z
   })
   .strict();
 
+export const adminEpisodesUpsertSchema = z
+  .object({
+    episodes: z.array(adminEpisodeItemSchema).min(1).max(500),
+  })
+  .strict();
+
+export type AdminEpisodeItemInput = z.infer<typeof adminEpisodeItemSchema>;
 export type AdminEpisodesUpsertInput = z.infer<typeof adminEpisodesUpsertSchema>;

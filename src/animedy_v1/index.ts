@@ -7,6 +7,10 @@ import { logError } from "../lib/errorlogger.js";
 import { fail } from "./lib/response.js";
 import { authRoutes } from "./routes/auth.js";
 import { settingsRoutes } from "./routes/settings.js";
+import { animeRoutes } from "./routes/anime.js";
+import { episodesRoutes } from "./routes/episodes.js";
+import { skipRoutes } from "./routes/skip.js";
+import { adminRoutes } from "./routes/admin.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,6 +20,10 @@ export const app = new Hono();
 
 app.route("/api/auth", authRoutes);
 app.route("/api/settings", settingsRoutes);
+app.route("/api/anime", animeRoutes);
+app.route("/api/episodes", episodesRoutes);
+app.route("/api/skip", skipRoutes);
+app.route("/api/admin", adminRoutes);
 
 // Lists all Swagger JSON definitions available in src/jsondef/.
 app.post("/docs/index", async (context) => {

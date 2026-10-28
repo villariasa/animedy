@@ -316,7 +316,7 @@ export interface SettingsSaveResponse {
 
 // -------------------- Admin --------------------
 
-export interface AdminEpisodeUpsertRequest {
+export interface AdminEpisodeUpsertItem {
   anime_id: number;
   episode_number: number;
   title?: string;
@@ -328,6 +328,11 @@ export interface AdminEpisodeUpsertRequest {
   qualities?: QualityVariant[];
 }
 
+// Accepts a single episode or a bulk array for operator convenience.
+export interface AdminEpisodeUpsertRequest {
+  episodes: AdminEpisodeUpsertItem[];
+}
+
 export interface AdminEpisodeUpsertResponse {
-  episode_id: number;
+  episode_ids: number[];
 }
