@@ -9,6 +9,7 @@ export type Route =
   | { name: "watch"; animeId: number; episodeId: number }
   | { name: "history" }
   | { name: "favorites" }
+  | { name: "mylist" }
   | { name: "settings" }
   | { name: "notfound" };
 
@@ -27,6 +28,8 @@ function parseHash(hash: string): Route {
     route = { name: "history" };
   } else if (path === "/favorites") {
     route = { name: "favorites" };
+  } else if (path === "/mylist") {
+    route = { name: "mylist" };
   } else if (path === "/settings") {
     route = { name: "settings" };
   }

@@ -3,8 +3,10 @@
   import Home from "$lib/pages/Home.svelte";
   import History from "$lib/pages/History.svelte";
   import Favorites from "$lib/pages/Favorites.svelte";
+  import MyList from "$lib/pages/MyList.svelte";
   import HeaderSearch from "$lib/components/HeaderSearch.svelte";
   import { likes } from "$lib/stores/likes.svelte";
+  import { watchStatusStore } from "$lib/stores/watchStatus.svelte";
   import Placeholder from "$lib/pages/Placeholder.svelte";
   import Settings from "$lib/pages/Settings.svelte";
   import Watch from "$lib/pages/Watch.svelte";
@@ -72,6 +74,23 @@
       </a>
 
       <a
+        href="#/mylist"
+        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'mylist' ? 'bg-primary/10 text-primary font-medium' : ''}"
+        title="My List"
+        aria-label="My List"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 text-primary shrink-0">
+          <path fill-rule="evenodd" d="M4 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v14l-6-3-6 3V4Z" clip-rule="evenodd" />
+        </svg>
+        <span class="hidden sm:inline">My List</span>
+        {#if watchStatusStore.count > 0}
+          <span class="rounded-full bg-primary/20 px-1.5 py-0.2 text-[10px] font-bold text-primary">
+            {watchStatusStore.count}
+          </span>
+        {/if}
+      </a>
+
+      <a
         href="#/history"
         class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'history' ? 'bg-primary/10 text-primary font-medium' : ''}"
         title="Watch history"
@@ -106,6 +125,8 @@
       <Watch animeId={router.current.animeId} episodeId={router.current.episodeId} />
     {:else if router.current.name === "favorites"}
       <Favorites />
+    {:else if router.current.name === "mylist"}
+      <MyList />
     {:else if router.current.name === "history"}
       <History />
     {:else if router.current.name === "settings"}

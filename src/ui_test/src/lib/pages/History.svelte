@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getAllLocalProgress, clearLocalProgress } from "$lib/db/local";
   import { Button } from "$lib/components/ui/button";
+  import TrendingSuggestions from "$lib/components/TrendingSuggestions.svelte";
   import { displayTitle, formatTime } from "$lib/format";
   import { router } from "$lib/router.svelte";
 
@@ -118,6 +119,7 @@
         When you stream anime episodes, your watched titles and playback progress will appear right here!
       </p>
       <Button class="mt-5" onclick={() => router.go("/")}>Start Watching</Button>
+      <TrendingSuggestions />
     </div>
   {:else}
     <ul class="divide-y divide-border/60 rounded-xl border border-border/80 bg-card/60 shadow-sm backdrop-blur">

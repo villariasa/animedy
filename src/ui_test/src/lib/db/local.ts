@@ -70,6 +70,13 @@ export async function getAllLocalProgress(): Promise<LocalProgress[]> {
   return (await db()).getAll("progress");
 }
 
+/** All progress rows for one anime — used to show watched/in-progress
+ * badges on an episode list. No anime_id index exists, so this scans the
+ * (small, per-device) progress store client-side like the other helpers. */
+export async function getLocalProgressForAnime(animeId: number): Promise<LocalProgress[]> {
+  return (await getAllLocalProgress()).filter((row) => row.anime_id === animeId);
+}
+
 export async function clearLocalProgress(): Promise<void> {
   await (await db()).clear("progress");
 }

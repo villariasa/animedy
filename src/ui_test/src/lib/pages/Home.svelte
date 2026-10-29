@@ -1,10 +1,18 @@
 <script lang="ts">
   import { ApiError } from "$lib/api/client";
-  import { browseAnime, searchAnime, getTodayReleases, type BrowseTag, type TodayRelease } from "$lib/api/anilist";
-  import type { AnimeSearchResultItem, ContinueWatchingItem } from "$lib/api/types";
+  import {
+    browseAnime,
+    searchAnime,
+    getTodayReleases,
+    ANILIST_GENRES,
+    type BrowseTag,
+    type TodayRelease
+  } from "$lib/api/anilist";
+  import type { AnimeFormat, AnimeSearchResultItem, ContinueWatchingItem } from "$lib/api/types";
   import ContinueWatchingCard from "$lib/components/ContinueWatchingCard.svelte";
   import HeroSpotlight from "$lib/components/HeroSpotlight.svelte";
   import CommunityShareBar from "$lib/components/CommunityShareBar.svelte";
+  import WeeklySchedule from "$lib/components/WeeklySchedule.svelte";
   import { getContinueWatching } from "$lib/continuation";
   import { displayTitle, statusLabel, statusBadgeClass } from "$lib/format";
   import { router } from "$lib/router.svelte";
@@ -32,6 +40,27 @@
   let curatedPage = $state(1);
   let curatedHasMore = $state(false);
   let loadingMore = $state(false);
+
+  // Discovery filters applied to the curated grid.
+  const FORMAT_OPTIONS: AnimeFormat[] = ["TV", "MOVIE", "OVA", "ONA", "SPECIAL", "TV_SHORT", "MUSIC"];
+  const YEAR_OPTIONS = Array.from({ length: 35 }, (_, i) => new Date().getFullYear() + 1 - i);
+  let filterGenre = $state("");
+  let filterYear = $state("");
+  let filterFormat = $state("");
+  const filtersActive = $derived(Boolean(filterGenre || filterYear || filterFormat));
+
+  function clearFilters(): void {
+    filterGenre = "";
+    filterYear = "";
+    filterFormat = "";
+  }
+
+  function matchesFilters(item: AnimeSearchResultItem): boolean {
+    if (filterGenre && !item.genres?.includes(filterGenre)) return false;
+    if (filterYear && item.season_year !== Number(filterYear)) return false;
+    if (filterFormat && item.format !== filterFormat) return false;
+    return true;
+  }
 
   const TAB_HEADERS: Record<MainCuratedTab, { title: string; subtitle: string }> = {
     trending: { title: "Popular Today", subtitle: "Realtime rankings from AniList activity, updated continuously" },
@@ -117,19 +146,28 @@
     return tab === "today" ? "trending" : tab;
   }
 
+  function activeFilters() {
+    return {
+      genre: filterGenre || null,
+      year: filterYear ? Number(filterYear) : null,
+      format: (filterFormat || null) as AnimeFormat | null
+    };
+  }
+
   async function loadCurated(tab: MainCuratedTab): Promise<void> {
     curatedLoading = true;
     curatedError = null;
     curatedPage = 1;
     try {
       if (tab === "today") {
+        // "Today" has no dedicated filtered query — apply filters client-side.
         const releases = await getTodayReleases();
         todayMeta = new Map(releases.map((r) => [r.item.anime_id, r]));
-        curatedItems = releases.map((r) => r.item);
+        curatedItems = releases.map((r) => r.item).filter(matchesFilters);
         curatedHasMore = false;
         return;
       }
-      const pageResult = await browseAnime(curatedTag(tab));
+      const pageResult = await browseAnime(curatedTag(tab), 1, activeFilters());
       curatedItems = pageResult.items;
       // AniList reports whether more pages exist — reliable no matter how many
       // entries the client-side filters drop from this page.
@@ -144,7 +182,7 @@
   async function loadMoreCurated(): Promise<void> {
     loadingMore = true;
     try {
-      const pageResult = await browseAnime(curatedTag(activeTab), curatedPage + 1);
+      const pageResult = await browseAnime(curatedTag(activeTab), curatedPage + 1, activeFilters());
       curatedPage += 1;
       // Dedup in case rankings shifted between pages.
       const seen = new Set(curatedItems.map((i) => i.anime_id));
@@ -175,6 +213,12 @@
   });
 
   $effect(() => {
+    // Synchronous reads so Svelte tracks these as dependencies — loadCurated
+    // itself reads them only after an await, which wouldn't be tracked.
+    void activeTab;
+    void filterGenre;
+    void filterYear;
+    void filterFormat;
     void loadCurated(activeTab);
   });
 
@@ -453,6 +497,52 @@
           </div>
         </div>
 
+        <!-- Discovery Filters: Genre / Year / Format -->
+        <div class="mb-6 flex flex-wrap items-center gap-2">
+          <select
+            bind:value={filterGenre}
+            class="h-9 rounded-lg border border-border/80 bg-card/90 px-2.5 text-xs font-medium text-foreground shadow-sm backdrop-blur focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Filter by genre"
+          >
+            <option value="">All Genres</option>
+            {#each ANILIST_GENRES as genre (genre)}
+              <option value={genre}>{genre}</option>
+            {/each}
+          </select>
+
+          <select
+            bind:value={filterYear}
+            class="h-9 rounded-lg border border-border/80 bg-card/90 px-2.5 text-xs font-medium text-foreground shadow-sm backdrop-blur focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Filter by year"
+          >
+            <option value="">All Years</option>
+            {#each YEAR_OPTIONS as year (year)}
+              <option value={year}>{year}</option>
+            {/each}
+          </select>
+
+          <select
+            bind:value={filterFormat}
+            class="h-9 rounded-lg border border-border/80 bg-card/90 px-2.5 text-xs font-medium text-foreground shadow-sm backdrop-blur focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Filter by format"
+          >
+            <option value="">All Formats</option>
+            {#each FORMAT_OPTIONS as format (format)}
+              <option value={format}>{format.replace(/_/g, " ")}</option>
+            {/each}
+          </select>
+
+          {#if filtersActive}
+            <button
+              type="button"
+              onclick={clearFilters}
+              class="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-background/90 px-2.5 h-9 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50"
+            >
+              Clear filters ✕
+            </button>
+          {/if}
+        </div>
+
         {#if curatedLoading}
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
             {#each Array(10) as _, i (i)}
@@ -465,6 +555,15 @@
           </div>
         {:else if curatedError}
           <p class="text-sm text-destructive">{curatedError}</p>
+        {:else if curatedItems.length === 0}
+          <p class="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+            No anime found matching these filters.
+            {#if filtersActive}
+              <button type="button" onclick={clearFilters} class="ml-1 font-semibold text-primary hover:underline">
+                Clear filters
+              </button>
+            {/if}
+          </p>
         {:else}
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
             {#each curatedItems as item, index (item.anime_id)}
@@ -589,8 +688,9 @@
         {/if}
       </section>
 
-      <!-- Right: Top Rankings Leaderboard List (The Green Box) -->
-      <aside class="w-full xl:w-80 2xl:w-96 shrink-0" aria-label="Top Rankings">
+      <!-- Right: Top Rankings Leaderboard List & Weekly Airing Schedule -->
+      <aside class="flex w-full flex-col gap-6 xl:w-96 2xl:w-[420px] shrink-0" aria-label="Sidebar rankings and schedule">
+        <!-- Top Rankings Card -->
         <div class="rounded-2xl border border-border/70 bg-card/50 p-4 shadow-sm backdrop-blur">
           <!-- Rankings Header -->
           <div class="mb-3 flex items-center justify-between border-b border-border/50 pb-3">
@@ -615,13 +715,13 @@
               </span>
               <div>
                 <h3 class="text-sm font-bold tracking-tight">Top Rankings</h3>
-                <p class="text-[11px] text-muted-foreground">Leaderboard list</p>
+                <p class="text-[11px] text-muted-foreground">Most popular anime leaderboard</p>
               </div>
             </div>
           </div>
 
           <!-- 4 Rankings Tabs: Top Rated | Trending | This Week | This Month -->
-          <div class="mb-3 grid grid-cols-4 gap-1 rounded-lg border border-border/80 bg-background/60 p-1 text-[11px]">
+          <div class="mb-3.5 grid grid-cols-4 gap-1 rounded-lg border border-border/80 bg-background/60 p-1 text-[11px]">
             <button
               type="button"
               class="rounded py-1 text-center font-medium transition-colors {rankingTab === 'top_rated' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
@@ -652,16 +752,15 @@
             </button>
           </div>
 
-          <!-- Rankings List items -->
+          <!-- Rankings List items in Image 1 style -->
           {#if rankingLoading}
-            <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-2.5">
               {#each Array(6) as _, i (i)}
-                <div class="flex animate-pulse items-center gap-3 py-1.5">
-                  <div class="h-6 w-6 rounded bg-muted/60"></div>
-                  <div class="h-14 w-11 rounded-lg bg-muted/60"></div>
-                  <div class="flex-1 space-y-1.5">
+                <div class="flex h-16 animate-pulse items-center gap-3 rounded-xl border border-border/40 bg-muted/30 p-3">
+                  <div class="h-8 w-8 rounded-full bg-muted/60"></div>
+                  <div class="flex-1 space-y-2">
                     <div class="h-3.5 w-3/4 rounded bg-muted/60"></div>
-                    <div class="h-2.5 w-1/2 rounded bg-muted/40"></div>
+                    <div class="h-2.5 w-1/3 rounded bg-muted/40"></div>
                   </div>
                 </div>
               {/each}
@@ -669,87 +768,89 @@
           {:else if rankingError}
             <p class="py-4 text-center text-xs text-destructive">{rankingError}</p>
           {:else}
-            <ol class="divide-y divide-border/40">
+            <ol class="flex flex-col gap-2.5">
               {#each rankingItems as item, idx (item.anime_id)}
                 <li>
                   <button
                     type="button"
-                    class="group flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    class="group relative flex w-full items-center justify-between overflow-hidden rounded-xl border border-border/70 bg-[#131722]/85 p-3 text-left shadow-sm backdrop-blur transition-all duration-300 hover:border-primary/60 hover:bg-[#181d2a] hover:shadow-md hover:shadow-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onclick={() => router.go(`/anime/${item.anime_id}`)}
                   >
-                    <!-- Rank Number -->
-                    <span
-                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black {
-                        idx === 0
-                          ? 'bg-amber-400/20 text-amber-400 ring-1 ring-amber-400/40'
-                          : idx === 1
-                          ? 'bg-slate-300/20 text-slate-300 ring-1 ring-slate-300/40'
-                          : idx === 2
-                          ? 'bg-amber-700/20 text-amber-500 ring-1 ring-amber-600/40'
-                          : 'text-muted-foreground/80'
-                      }"
-                    >
-                      {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
-                    </span>
-
-                    <!-- Thumbnail cover -->
-                    <div class="relative h-14 w-10 shrink-0 overflow-hidden rounded-md bg-muted shadow-sm">
-                      {#if item.cover_image}
+                    <!-- Background artwork crop on the right with soft fade gradient -->
+                    <div class="pointer-events-none absolute inset-y-0 right-0 w-2/5 sm:w-1/2 overflow-hidden">
+                      {#if item.banner_image || item.cover_image}
                         <img
-                          src={item.cover_image}
+                          src={item.banner_image || item.cover_image}
                           alt=""
                           loading="lazy"
-                          class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-110"
+                          class="h-full w-full object-cover object-center sm:object-right transition-transform duration-500 ease-out group-hover:scale-110"
                         />
                       {/if}
+                      <!-- Linear gradient fade into card background -->
+                      <div class="absolute inset-0 bg-gradient-to-r from-[#131722] via-[#131722]/80 to-transparent group-hover:from-[#181d2a] group-hover:via-[#181d2a]/75 transition-colors"></div>
                     </div>
 
-                    <!-- Details -->
-                    <div class="min-w-0 flex-1">
-                      <p class="truncate text-xs font-semibold tracking-tight transition-colors group-hover:text-primary">
-                        {displayTitle(item.title_english, item.title_romaji)}
-                      </p>
-                      <div class="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        {#if item.score}
-                          <span class="inline-flex items-center gap-0.5 font-bold text-amber-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-2.5 w-2.5" aria-hidden="true"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd" /></svg>
-                            {(item.score / 10).toFixed(1)}
+                    <!-- Left Content: Rank Badge + Titles & Subtitle Pills -->
+                    <div class="relative z-10 flex items-center gap-3 min-w-0 pr-4">
+                      <!-- Rank Circle -->
+                      <span
+                        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black transition-transform group-hover:scale-105 {
+                          idx === 0
+                            ? 'border-2 border-amber-400 bg-amber-400/15 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.3)]'
+                            : idx === 1
+                            ? 'border-2 border-slate-300 bg-slate-300/15 text-slate-100 shadow-[0_0_10px_rgba(203,213,225,0.25)]'
+                            : idx === 2
+                            ? 'border-2 border-amber-600 bg-amber-600/15 text-amber-400 shadow-[0_0_10px_rgba(217,119,6,0.25)]'
+                            : 'border border-border/80 bg-black/40 text-muted-foreground'
+                        }"
+                      >
+                        {idx + 1}
+                      </span>
+
+                      <!-- Title and Metadata -->
+                      <div class="min-w-0 flex-1">
+                        <h4
+                          class="truncate text-xs sm:text-sm font-bold tracking-tight text-foreground transition-colors group-hover:text-primary"
+                          title={displayTitle(item.title_english, item.title_romaji)}
+                        >
+                          {displayTitle(item.title_english, item.title_romaji)}
+                        </h4>
+
+                        <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <!-- Closed Caption / Episodes Badge (CC 4) -->
+                          <span class="inline-flex items-center gap-1 rounded border border-orange-500/50 bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-black text-orange-400 tracking-wider">
+                            <span class="text-[9px] font-extrabold uppercase">CC</span>
+                            <span>{item.latest_episode && item.latest_episode > 0 ? item.latest_episode : 1}</span>
                           </span>
-                        {/if}
-                        {#if item.format}
-                          <span class="rounded bg-muted px-1 py-0.2 text-[10px] font-medium uppercase">
-                            {item.format}
-                          </span>
-                        {/if}
-                        {#if item.season_year}
-                          <span>{item.season_year}</span>
-                        {/if}
-                        {#if item.status}
-                          <span class="rounded px-1 py-0.5 text-[10px] font-semibold {statusBadgeClass(item.status)}">
-                            {statusLabel(item.status)}
-                          </span>
-                        {/if}
+
+                          <!-- Format Badge (TV / ONA / MOVIE) -->
+                          {#if item.format}
+                            <span class="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                              {item.format}
+                            </span>
+                          {/if}
+
+                          <!-- Rating Score -->
+                          {#if item.score}
+                            <span class="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-400">
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-2.5 w-2.5" aria-hidden="true">
+                                <path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd" />
+                              </svg>
+                              {(item.score / 10).toFixed(1)}
+                            </span>
+                          {/if}
+                        </div>
                       </div>
                     </div>
-
-                    <!-- Mini Chevron icon -->
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke-width="2"
-                      stroke="currentColor"
-                      class="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
-                      aria-hidden="true"
-                    >
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                    </svg>
                   </button>
                 </li>
               {/each}
             </ol>
           {/if}
         </div>
+
+        <!-- Weekly Airing Release Schedule with Real-Time Countdown (Image 2) -->
+        <WeeklySchedule />
       </aside>
     </div>
   {/if}

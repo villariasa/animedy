@@ -5,6 +5,7 @@
   import { likes } from "$lib/stores/likes.svelte";
   import { router } from "$lib/router.svelte";
   import { Button } from "$lib/components/ui/button";
+  import TrendingSuggestions from "$lib/components/TrendingSuggestions.svelte";
 
   let searchQuery = $state("");
   let airing = $state<Map<number, AiringInfo>>(new Map());
@@ -113,6 +114,7 @@
         Click the heart icon on any anime card or detail page to add it to your collection!
       </p>
       <Button class="mt-5" onclick={() => router.go("/")}>Browse Anime</Button>
+      <TrendingSuggestions />
     </div>
   {:else if filteredItems.length === 0}
     <p class="py-12 text-center text-sm text-muted-foreground">No matches found for "{searchQuery}".</p>

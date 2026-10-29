@@ -18,6 +18,7 @@ const ANILIST_URL = "https://graphql.anilist.co";
 const MEDIA_FIELDS = `
   id
   idMal
+  type
   title { romaji english native }
   format
   status
@@ -42,6 +43,7 @@ const MEDIA_FIELDS = `
 interface AniListMedia {
   id: number;
   idMal: number | null;
+  type?: string | null;
   title: { romaji: string | null; english: string | null; native: string | null };
   format: string | null;
   status: string | null;
@@ -205,12 +207,41 @@ export type BrowseTag = "trending" | "popular" | "top_rated" | "this_week" | "th
 
 export const BROWSE_PAGE_SIZE = 24;
 
+/** Fixed AniList genre list (AniList has no "list genres" query worth a
+ * round trip for — these are the canonical values its schema accepts). */
+export const ANILIST_GENRES = [
+  "Action",
+  "Adventure",
+  "Comedy",
+  "Drama",
+  "Ecchi",
+  "Fantasy",
+  "Horror",
+  "Mahou Shoujo",
+  "Mecha",
+  "Music",
+  "Mystery",
+  "Psychological",
+  "Romance",
+  "Sci-Fi",
+  "Slice of Life",
+  "Sports",
+  "Supernatural",
+  "Thriller"
+] as const;
+
+export interface BrowseFilters {
+  genre?: string | null;
+  year?: number | null;
+  format?: AnimeFormat | null;
+}
+
 export interface BrowsePage {
   items: AnimeSearchResultItem[];
   hasNextPage: boolean;
 }
 
-export async function browseAnime(tag: BrowseTag, page = 1): Promise<BrowsePage> {
+export async function browseAnime(tag: BrowseTag, page = 1, filters?: BrowseFilters): Promise<BrowsePage> {
   const sortMap: Record<BrowseTag, string> = {
     trending: "TRENDING_DESC", // AniList's realtime activity metric = "popular today"
     popular: "POPULARITY_DESC",
@@ -254,8 +285,24 @@ export async function browseAnime(tag: BrowseTag, page = 1): Promise<BrowsePage>
       `startDate_lesser: ${fuzzyToday + 1}`
     );
   }
+  if (filters?.genre) {
+    mediaArgs.push("genre_in: $filterGenre");
+    varDefs += ", $filterGenre: [String]";
+    variables.filterGenre = [filters.genre];
+  }
+  if (filters?.year && !seasonal) {
+    mediaArgs.push("seasonYear: $filterYear");
+    varDefs += ", $filterYear: Int";
+    variables.filterYear = filters.year;
+  }
+  if (filters?.format) {
+    mediaArgs.push("format: $filterFormat");
+    varDefs += ", $filterFormat: MediaFormat";
+    variables.filterFormat = filters.format;
+  }
+  const filterKey = `${filters?.genre ?? ""}:${filters?.year ?? ""}:${filters?.format ?? ""}`;
   const data = await gql<{ Page: { pageInfo: { hasNextPage: boolean }; media: AniListMedia[] } }>(
-    `anilist:browse:v4:${tag}:p${page}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}`,
+    `anilist:browse:v5:${tag}:p${page}:${seasonal ? `${season}-${now.getFullYear()}` : "all"}:${filterKey}`,
     `query (${varDefs}, $page: Int) {
       Page(page: $page, perPage: ${BROWSE_PAGE_SIZE}) {
         pageInfo { hasNextPage }
@@ -292,6 +339,28 @@ async function fetchMedia(id: number, withRelations: boolean): Promise<AniListMe
 
 export async function getAnimeDetails(id: number): Promise<AnimeDetails> {
   return toDetails(await fetchMedia(id, false));
+}
+
+/** "You might also like" — AniList's community-ranked recommendations for
+ * this title, filtered to anime (AniList also recommends manga/other types). */
+export async function getRecommendations(id: number): Promise<AnimeSearchResultItem[]> {
+  const data = await gql<{
+    Media: { recommendations: { nodes: Array<{ mediaRecommendation: AniListMedia | null }> } };
+  }>(
+    `anilist:recommendations:${id}`,
+    `query ($id: Int) {
+      Media(id: $id, type: ANIME) {
+        recommendations(sort: RATING_DESC, perPage: 12) {
+          nodes { mediaRecommendation { ${MEDIA_FIELDS} } }
+        }
+      }
+    }`,
+    { id }
+  );
+  return data.Media.recommendations.nodes
+    .map((n) => n.mediaRecommendation)
+    .filter((m): m is AniListMedia => m !== null && m.type === "ANIME")
+    .map(toSearchItem);
 }
 
 /** Synthesize the episode list from the episode count — streams come from
@@ -508,6 +577,86 @@ export async function getTodayReleases(): Promise<TodayRelease[]> {
     }
   }
   return [...byAnime.values()].sort((x, y) => y.airingAt - x.airingAt);
+}
+
+export interface AiringScheduleEntry {
+  id: number;
+  anime_id: number;
+  title_english: string | null;
+  title_romaji: string | null;
+  episode: number;
+  airing_at: number;
+  cover_image: string | null;
+  banner_image: string | null;
+  format: AnimeFormat | null;
+}
+
+/** Airing schedule entries for a specific day window (Japanese anime only). */
+export async function getAiringSchedule(
+  startTimestampSeconds: number,
+  endTimestampSeconds: number
+): Promise<AiringScheduleEntry[]> {
+  const cacheKey = `anilist:schedule:v1:${startTimestampSeconds}:${endTimestampSeconds}`;
+
+  const data = await gql<{
+    Page: {
+      airingSchedules: Array<{
+        id: number;
+        episode: number;
+        airingAt: number;
+        media: AniListMedia;
+      }>;
+    };
+  }>(
+    cacheKey,
+    `query ($start: Int, $end: Int) {
+      Page(page: 1, perPage: 50) {
+        airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: [TIME]) {
+          id
+          episode
+          airingAt
+          media {
+            id
+            idMal
+            title { romaji english }
+            format
+            countryOfOrigin
+            isAdult
+            coverImage { large extraLarge }
+            bannerImage
+          }
+        }
+      }
+    }`,
+    { start: startTimestampSeconds, end: endTimestampSeconds }
+  );
+
+  const seen = new Set<string>();
+  const list: AiringScheduleEntry[] = [];
+
+  for (const s of data.Page?.airingSchedules ?? []) {
+    const m = s.media;
+    if (!m || m.countryOfOrigin !== "JP" || m.isAdult || m.format === "MUSIC") {
+      continue;
+    }
+    const key = `${m.id}-${s.episode}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    list.push({
+      id: s.id,
+      anime_id: m.id,
+      title_english: m.title?.english ?? null,
+      title_romaji: m.title?.romaji ?? null,
+      episode: s.episode,
+      airing_at: s.airingAt,
+      cover_image: m.coverImage?.extraLarge ?? m.coverImage?.large ?? null,
+      banner_image: m.bannerImage ?? null,
+      format: (m.format as AnimeFormat) ?? null
+    });
+  }
+
+  return list;
 }
 
 export interface AiringInfo {

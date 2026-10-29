@@ -1,14 +1,16 @@
 <script lang="ts">
   import { ApiError } from "$lib/api/client";
-  import { buildEpisodes, getAnimeDetails, getEpisodeMedia, getFranchise } from "$lib/api/anilist";
-  import type { AnimeDetails, EpisodeListItem, FranchiseEntry } from "$lib/api/types";
+  import { buildEpisodes, getAnimeDetails, getEpisodeMedia, getFranchise, getRecommendations } from "$lib/api/anilist";
+  import type { AnimeDetails, AnimeSearchResultItem, EpisodeListItem, FranchiseEntry } from "$lib/api/types";
   import { Button } from "$lib/components/ui/button";
   import { getFallbackTrailerId } from "$lib/api/jikan";
+  import { getLocalProgressForAnime, type LocalProgress } from "$lib/db/local";
   import { createBackgroundPlayer, type BackgroundPlayerHandle } from "$lib/api/youtubeApi";
   import { getLocalWatchNext, type LocalWatchNext } from "$lib/continuation";
   import { displayTitle, formatAirDate, stripHtml } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
+  import { watchStatusStore, WATCH_STATUS_ORDER, WATCH_STATUS_LABELS, type WatchStatus } from "$lib/stores/watchStatus.svelte";
   import { onDestroy } from "svelte";
 
   let { animeId }: { animeId: number } = $props();
@@ -20,6 +22,8 @@
   let isDescriptionExpanded = $state(false);
   let error = $state<string | null>(null);
   let loading = $state(true);
+  let recommendations = $state<AnimeSearchResultItem[]>([]);
+  let progressByEpisode = $state<Map<number, LocalProgress>>(new Map());
 
   const CHUNK_SIZE = 50;
   let activeChunkIndex = $state(0);
@@ -87,6 +91,35 @@
     const id = animeId;
     if (Number.isFinite(id) && id > 0) {
       loadAnime(id);
+    }
+  });
+
+  $effect(() => {
+    const id = animeId;
+    recommendations = [];
+    if (Number.isFinite(id) && id > 0) {
+      void getRecommendations(id)
+        .then((items) => {
+          if (animeId === id) {
+            recommendations = items;
+          }
+        })
+        .catch(() => undefined);
+    }
+  });
+
+  // Per-episode watched/in-progress state, from this device's local progress.
+  $effect(() => {
+    const id = animeId;
+    progressByEpisode = new Map();
+    if (Number.isFinite(id) && id > 0) {
+      void getLocalProgressForAnime(id)
+        .then((rows) => {
+          if (animeId === id) {
+            progressByEpisode = new Map(rows.map((row) => [row.episode_number ?? 0, row]));
+          }
+        })
+        .catch(() => undefined);
     }
   });
 
@@ -331,6 +364,37 @@
             </svg>
             {likes.isLiked(anime.id) ? "Loved Anime" : "Love this Anime"}
           </Button>
+
+          <!-- Watch Status Selector -->
+          <select
+            value={watchStatusStore.getStatus(anime.id) ?? ""}
+            onchange={(e) => {
+              const value = e.currentTarget.value as WatchStatus | "";
+              if (!anime) return;
+              if (value === "") {
+                watchStatusStore.clearStatus(anime.id);
+              } else {
+                watchStatusStore.setStatus(
+                  {
+                    anime_id: anime.id,
+                    title_english: anime.title_english,
+                    title_romaji: anime.title_romaji,
+                    cover_image: anime.cover_image,
+                    format: anime.format,
+                    season_year: anime.season_year
+                  },
+                  value
+                );
+              }
+            }}
+            class="h-10 rounded-xl border border-border/80 bg-card/90 px-3 text-sm font-semibold text-foreground shadow-sm backdrop-blur transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary {watchStatusStore.getStatus(anime.id) ? 'border-primary/50' : ''}"
+            aria-label="Watch status"
+          >
+            <option value="">+ Add to List</option>
+            {#each WATCH_STATUS_ORDER as status (status)}
+              <option value={status}>{WATCH_STATUS_LABELS[status]}</option>
+            {/each}
+          </select>
         </div>
       </div>
       </div>
@@ -436,6 +500,42 @@
       </section>
     {/if}
 
+    {#if recommendations.length > 0}
+      <section aria-label="Recommendations" class="rounded-3xl border border-border/80 bg-card/70 p-4 sm:p-6 shadow-xl backdrop-blur-xl">
+        <h3 class="text-lg sm:text-xl font-bold tracking-tight text-foreground mb-4">You Might Also Like</h3>
+        <ul class="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+          {#each recommendations as item (item.anime_id)}
+            <li class="w-32 sm:w-36 shrink-0">
+              <button
+                type="button"
+                class="group flex w-full flex-col gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onclick={() => router.go(`/anime/${item.anime_id}`)}
+              >
+                <div class="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60">
+                  {#if item.cover_image}
+                    <img
+                      src={item.cover_image}
+                      alt=""
+                      loading="lazy"
+                      class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                  {/if}
+                  {#if item.format}
+                    <span class="absolute top-1.5 right-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white backdrop-blur">
+                      {item.format}
+                    </span>
+                  {/if}
+                </div>
+                <p class="truncate text-xs font-semibold transition-colors group-hover:text-primary">
+                  {displayTitle(item.title_english, item.title_romaji)}
+                </p>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+
     <!-- Episodes Section with 16:9 Image Preview Boxes and Descriptive Titles -->
     <section aria-label="Episodes" class="flex flex-col gap-4">
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -533,12 +633,25 @@
         <!-- Quick Column Grid (For rapid 1-click selection in 10 columns) -->
         <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2 rounded-xl border border-border bg-card/40 p-3 backdrop-blur">
           {#each displayedEpisodes as ep (ep.episode_number)}
+            {@const prog = progressByEpisode.get(ep.episode_number)}
             <button
               type="button"
-              class="group flex flex-col items-center justify-center rounded-lg border border-border/70 bg-card/80 py-2.5 px-1 text-center transition-all hover:border-primary hover:bg-primary/10 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="group relative flex flex-col items-center justify-center overflow-hidden rounded-lg border py-2.5 px-1 text-center transition-all hover:border-primary hover:bg-primary/10 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {prog?.completed
+                ? 'border-emerald-500/40 bg-emerald-500/10'
+                : 'border-border/70 bg-card/80'}"
               onclick={() => router.go(`/watch/${anime?.id}/${ep.episode_number}`)}
               title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}${ep.air_date ? ` (${formatAirDate(ep.air_date)})` : ''}` : `Episode ${ep.episode_number}`}
             >
+              {#if prog?.completed}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="absolute top-1 right-1 h-3 w-3 text-emerald-400" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
+                </svg>
+              {:else if prog && prog.position_seconds > 0 && prog.duration_seconds > 0}
+                <div
+                  class="absolute bottom-0 left-0 h-0.5 bg-primary"
+                  style="width: {Math.min(100, (prog.position_seconds / prog.duration_seconds) * 100)}%"
+                ></div>
+              {/if}
               <span class="text-xs font-bold text-foreground group-hover:text-primary">{ep.episode_number}</span>
               <span class="text-[9px] uppercase tracking-wider text-muted-foreground/80">EP</span>
             </button>
@@ -548,10 +661,11 @@
         <ul class="divide-y divide-border/50 rounded-xl border border-border bg-card/40 backdrop-blur">
           {#each displayedEpisodes as ep (ep.episode_id)}
             {@const previewImg = ep.thumbnail || anime.banner_image || anime.cover_image}
+            {@const prog = progressByEpisode.get(ep.episode_number)}
             <li>
               <button
                 type="button"
-                class="group flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                class="group flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {prog?.completed ? 'opacity-70' : ''}"
                 onclick={() => router.go(`/watch/${anime?.id}/${ep.episode_number}`)}
               >
                 <!-- 16:9 Image Preview Box with Play Hover Overlay -->
@@ -594,6 +708,22 @@
                     </span>
                   {/if}
 
+                  <!-- Watched / in-progress indicator -->
+                  {#if prog?.completed}
+                    <span class="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow" title="Watched">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
+                      </svg>
+                    </span>
+                  {:else if prog && prog.position_seconds > 0 && prog.duration_seconds > 0}
+                    <div class="absolute inset-x-0 bottom-0 h-1 bg-black/40">
+                      <div
+                        class="h-full bg-primary"
+                        style="width: {Math.min(100, (prog.position_seconds / prog.duration_seconds) * 100)}%"
+                      ></div>
+                    </div>
+                  {/if}
+
                   <!-- Play button hover overlay with Heroicon SVG -->
                   <div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover:opacity-100">
                     <span class="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-200 group-hover:scale-110">
@@ -625,8 +755,14 @@
                   <p class="mt-1.5 truncate text-base font-semibold text-foreground transition-colors group-hover:text-primary">
                     {ep.title && ep.title !== `Episode ${ep.episode_number}` ? ep.title : `Episode ${ep.episode_number}`}
                   </p>
-                  <p class="mt-0.5 text-xs text-muted-foreground">
-                    Click to stream in HD anime player
+                  <p class="mt-0.5 text-xs {prog?.completed ? 'font-medium text-emerald-400' : 'text-muted-foreground'}">
+                    {#if prog?.completed}
+                      Watched
+                    {:else if prog && prog.position_seconds > 0 && prog.duration_seconds > 0}
+                      {Math.round((prog.position_seconds / prog.duration_seconds) * 100)}% watched — resume
+                    {:else}
+                      Click to stream in HD anime player
+                    {/if}
                   </p>
                 </div>
 

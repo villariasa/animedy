@@ -1,6 +1,7 @@
 <script lang="ts">
   import { displayTitle } from "$lib/format";
   import { likes } from "$lib/stores/likes.svelte";
+  import { watchStatusStore, WATCH_STATUS_LABELS } from "$lib/stores/watchStatus.svelte";
 
   const DISMISS_MS = 5000;
 
@@ -16,7 +17,58 @@
       return () => clearTimeout(timer);
     }
   });
+
+  $effect(() => {
+    const action = watchStatusStore.lastAction;
+    if (action) {
+      const timer = setTimeout(() => {
+        if (watchStatusStore.lastAction === action) {
+          watchStatusStore.dismissUndo();
+        }
+      }, DISMISS_MS);
+      return () => clearTimeout(timer);
+    }
+  });
 </script>
+
+{#if watchStatusStore.lastAction}
+  {@const action = watchStatusStore.lastAction}
+  {@const entry = action.current ?? action.previous}
+  {@const title = entry ? displayTitle(entry.title_english, entry.title_romaji) : ""}
+  <div
+    class="fixed bottom-20 left-1/2 z-[80] flex w-[min(92vw,26rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-2xl backdrop-blur"
+    role="status"
+    aria-live="polite"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 shrink-0 text-primary">
+      <path fill-rule="evenodd" d="M4 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v14l-6-3-6 3V4Z" clip-rule="evenodd" />
+    </svg>
+    <p class="min-w-0 flex-1 truncate text-sm">
+      {#if action.current}
+        <span class="font-semibold">{title}</span> marked as {WATCH_STATUS_LABELS[action.current.status]}
+      {:else}
+        <span class="font-semibold">{title}</span> removed from My List
+      {/if}
+    </p>
+    <button
+      type="button"
+      class="shrink-0 rounded-lg bg-primary/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary transition-colors hover:bg-primary/25"
+      onclick={() => watchStatusStore.undo()}
+    >
+      Undo
+    </button>
+    <button
+      type="button"
+      class="shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:text-foreground"
+      onclick={() => watchStatusStore.dismissUndo()}
+      aria-label="Dismiss"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+{/if}
 
 {#if likes.lastAction}
   {@const action = likes.lastAction}
