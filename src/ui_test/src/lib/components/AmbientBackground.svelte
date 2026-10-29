@@ -5,7 +5,10 @@
 
 <!-- Fixed, non-interactive layer behind the whole app (header, margins,
      content). Content renders after it in DOM order, so UI stays sharp. -->
-<div class="pointer-events-none fixed inset-0 h-full w-full overflow-hidden" aria-hidden="true">
+<!-- -z-10: without an explicit z-index, this fixed layer (a "positioned"
+     element) paints ABOVE ordinary static-flow content regardless of DOM
+     order, dimming any text not wrapped in its own stacking context. -->
+<div class="pointer-events-none fixed inset-0 -z-10 h-full w-full overflow-hidden" aria-hidden="true">
   {#if ambience.image}
     {#key ambience.image}
       <div

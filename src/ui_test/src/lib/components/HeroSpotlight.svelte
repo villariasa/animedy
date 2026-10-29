@@ -1,10 +1,13 @@
 <script lang="ts">
   import type { AnimeSearchResultItem } from "$lib/api/types";
   import { getHDBanner } from "$lib/api/kitsu";
+  import { getFallbackTrailerId } from "$lib/api/jikan";
+  import { createBackgroundPlayer, type BackgroundPlayerHandle } from "$lib/api/youtubeApi";
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
   import { ambience } from "$lib/stores/ambience.svelte";
+  import { onDestroy } from "svelte";
 
   let { items = [] }: { items: AnimeSearchResultItem[] } = $props();
 
@@ -32,9 +35,49 @@
     }
   });
 
-  let autoPlayTimer: ReturnType<typeof setInterval> | undefined;
-
   const currentItem = $derived(validItems[currentIndex] ?? null);
+
+  // Trailers fetched from Jikan/MAL for items AniList has none for.
+  let fallbackTrailers = $state<Record<number, string | null>>({});
+
+  $effect(() => {
+    for (const item of validItems.slice(0, 8)) {
+      const id = item.anime_id;
+      if (!item.trailer_id && item.mal_id && !(id in fallbackTrailers)) {
+        void getFallbackTrailerId(item.mal_id).then((trailerId) => {
+          fallbackTrailers = { ...fallbackTrailers, [id]: trailerId };
+        });
+      }
+    }
+  });
+
+  // Muted YouTube trailer for the active slide (autoplay requires mute).
+  const trailerId = $derived(
+    currentItem ? currentItem.trailer_id ?? fallbackTrailers[currentItem.anime_id] ?? null : null
+  );
+  let videoLoaded = $state(false);
+
+  // Drives playback ourselves via the YT IFrame API (instead of autoplay/loop
+  // URL params) so YouTube never flashes its native play/pause control icon.
+  let playerHost = $state<HTMLDivElement | undefined>(undefined);
+  let player: BackgroundPlayerHandle | null = null;
+
+  $effect(() => {
+    videoLoaded = false;
+    if (!trailerId) {
+      player?.stop();
+      return;
+    }
+    if (player) {
+      player.loadVideo(trailerId);
+    } else if (playerHost) {
+      player = createBackgroundPlayer(playerHost, trailerId, () => (videoLoaded = true));
+    }
+  });
+
+  onDestroy(() => {
+    player?.destroy();
+  });
 
   // Candidate art per item, best-quality first; images that 404 get skipped.
   let failedImages = $state<Record<string, boolean>>({});
@@ -101,16 +144,15 @@
     currentIndex = index;
   }
 
+  // Auto-advance: give trailer slides longer screen time than static banners.
   $effect(() => {
-    if (validItems.length <= 1) return;
-    autoPlayTimer = setInterval(() => {
-      if (!isPaused) {
-        nextSlide();
-      }
-    }, 6000);
+    if (validItems.length <= 1 || isPaused) return;
+    void currentIndex;
+    const duration = trailerId ? 15000 : 6000;
+    const timer = setTimeout(nextSlide, duration);
 
     return () => {
-      clearInterval(autoPlayTimer);
+      clearTimeout(timer);
     };
   });
 </script>
@@ -141,6 +183,13 @@
           class="h-full w-full object-cover blur-3xl opacity-20"
         />
       {/if}
+
+      <!-- Trailer video takes over the stage once it has loaded -->
+      <div
+        class="hero-video-stage absolute inset-0 {trailerId && videoLoaded ? 'opacity-100' : 'opacity-0'}"
+      >
+        <div bind:this={playerHost}></div>
+      </div>
 
       <!-- Multi-directional cinematic vignette gradients -->
       <div class="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent lg:hidden"></div>
@@ -317,3 +366,27 @@
     </div>
   </section>
 {/if}
+
+<style>
+  /* Scale the 16:9 YouTube iframe so it covers the stage with no letterboxing,
+     regardless of the stage's own aspect ratio. */
+  .hero-video-stage {
+    container-type: size;
+    overflow: hidden;
+    pointer-events: none;
+    transition: opacity 0.7s ease-out;
+  }
+
+  /* :global because this iframe is injected by the YouTube IFrame API, not
+     by Svelte's template, so it never receives the scoped-style class. */
+  :global(.hero-video-stage iframe) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100cqw, 177.78cqh);
+    height: max(100cqh, 56.25cqw);
+    border: 0;
+    pointer-events: none;
+  }
+</style>

@@ -3,6 +3,7 @@
   import type { AnimeSearchResultItem } from "$lib/api/types";
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
+  import { homeReset } from "$lib/stores/homeReset.svelte";
 
   let { isSearchActive = $bindable(false) }: { isSearchActive?: boolean } = $props();
 
@@ -21,6 +22,17 @@
 
   $effect(() => {
     isSearchActive = isFocused || isOpen || query.trim().length > 0;
+  });
+
+  let lastHomeResetToken = homeReset.token;
+  $effect(() => {
+    if (homeReset.token !== lastHomeResetToken) {
+      lastHomeResetToken = homeReset.token;
+      clearTimeout(debounceTimer);
+      closeSearch();
+      query = "";
+      results = [];
+    }
   });
 
   function stripHtml(html: string | null | undefined): string {

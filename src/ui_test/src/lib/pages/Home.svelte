@@ -9,6 +9,7 @@
   import { displayTitle, statusLabel, statusBadgeClass } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
+  import { homeReset } from "$lib/stores/homeReset.svelte";
 
   type MainCuratedTab = "trending" | "today" | "new_releases";
   type RankingTab = "top_rated" | "trending" | "this_week" | "this_month";
@@ -99,6 +100,19 @@
     searchError = null;
   }
 
+  // Clicking "Home" while already on this route doesn't remount the
+  // component (router.current doesn't change), so listen for an explicit
+  // reset signal to clear any active search and go back to the curated tabs.
+  let lastHomeResetToken = homeReset.token;
+  $effect(() => {
+    if (homeReset.token !== lastHomeResetToken) {
+      lastHomeResetToken = homeReset.token;
+      clearTimeout(debounceTimer);
+      clearSearch();
+      activeTab = "trending";
+    }
+  });
+
   function curatedTag(tab: MainCuratedTab): BrowseTag {
     return tab === "today" ? "trending" : tab;
   }
@@ -167,6 +181,7 @@
   $effect(() => {
     void loadRankings(rankingTab);
   });
+
 
   // Continue Watching rail from this device's IndexedDB history.
   $effect(() => {
@@ -356,62 +371,84 @@
     <div class="flex flex-col gap-8 xl:flex-row xl:items-start">
       <!-- Left: Popular & Trending Cards Grid -->
       <section class="min-w-0 flex-1" aria-label="Curated anime">
-        <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 class="text-xl font-bold tracking-tight">{TAB_HEADERS[activeTab].title}</h2>
-            <p class="text-xs text-muted-foreground">{TAB_HEADERS[activeTab].subtitle}</p>
+            <h2 class="text-2xl font-bold tracking-tight text-foreground">{TAB_HEADERS[activeTab].title}</h2>
+            <p class="text-xs sm:text-sm text-muted-foreground mt-0.5">{TAB_HEADERS[activeTab].subtitle}</p>
           </div>
 
-          <!-- Main tabs -->
-          <div class="inline-flex rounded-lg border border-border bg-card/60 p-1 text-xs">
+          <!-- Main Dashboard Tabs (High Visibility & Contrast) -->
+          <div class="flex items-center gap-2 overflow-x-auto pb-1.5 sm:pb-0 scrollbar-none rounded-2xl border border-border/80 bg-card/90 p-1.5 shadow-lg backdrop-blur-xl">
             <button
               type="button"
-              class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors {activeTab === 'trending' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-              onclick={() => (activeTab = "trending")}
+              class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap {activeTab === 'trending'
+                ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/40 font-bold'
+                : 'bg-background/90 text-foreground border border-border/80 hover:border-primary/50 hover:bg-accent hover:text-primary shadow-sm'}"
+              onclick={() => { activeTab = "trending"; query = ""; }}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.75"
-                stroke="currentColor"
-                class="h-3.5 w-3.5 shrink-0"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="h-4 w-4 shrink-0 {activeTab === 'trending' ? 'text-primary-foreground' : 'text-amber-500'}"
                 aria-hidden="true"
               >
                 <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z"
+                  fill-rule="evenodd"
+                  d="M13.5 4.938a7 7 0 1 1-9.006 1.737c.2-.202.4-.41.6-.621l.135-.143a1.5 1.5 0 0 0 .285-.898 3.5 3.5 0 0 1 5.986-2.477c.433.433.805.922 1.11 1.455.228.398.544.73.89.947ZM10 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+                  clip-rule="evenodd"
                 />
+              </svg>
+              <span>Popular Today</span>
+            </button>
+
+            <button
+              type="button"
+              class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap {activeTab === 'today'
+                ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/40 font-bold'
+                : 'bg-background/90 text-foreground border border-border/80 hover:border-primary/50 hover:bg-accent hover:text-primary shadow-sm'}"
+              onclick={() => { activeTab = "today"; query = ""; }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="h-4 w-4 shrink-0 {activeTab === 'today' ? 'text-primary-foreground' : 'text-sky-400'}"
+                aria-hidden="true"
+              >
                 <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z"
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 0 0 1.06-1.06l-2.78-2.78V5Z"
+                  clip-rule="evenodd"
                 />
               </svg>
-              Popular Today
+              <span>Today Release</span>
+              <span class="inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-extrabold {activeTab === 'today' ? 'bg-white/20 text-white' : 'bg-sky-500/20 text-sky-400'}">
+                LIVE
+              </span>
             </button>
 
             <button
               type="button"
-              class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors {activeTab === 'today' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-              onclick={() => (activeTab = "today")}
+              class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap {activeTab === 'new_releases'
+                ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/40 font-bold'
+                : 'bg-background/90 text-foreground border border-border/80 hover:border-primary/50 hover:bg-accent hover:text-primary shadow-sm'}"
+              onclick={() => { activeTab = "new_releases"; query = ""; }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="h-3.5 w-3.5 shrink-0" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="h-4 w-4 shrink-0 {activeTab === 'new_releases' ? 'text-primary-foreground' : 'text-emerald-400'}"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z"
+                  clip-rule="evenodd"
+                />
               </svg>
-              Today Release
-            </button>
-
-            <button
-              type="button"
-              class="flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors {activeTab === 'new_releases' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-              onclick={() => (activeTab = "new_releases")}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="h-3.5 w-3.5 shrink-0" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
-              </svg>
-              New Releases
+              <span>New Releases</span>
             </button>
           </div>
         </div>

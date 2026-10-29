@@ -3,10 +3,13 @@
   import { buildEpisodes, getAnimeDetails, getEpisodeMedia, getFranchise } from "$lib/api/anilist";
   import type { AnimeDetails, EpisodeListItem, FranchiseEntry } from "$lib/api/types";
   import { Button } from "$lib/components/ui/button";
+  import { getFallbackTrailerId } from "$lib/api/jikan";
+  import { createBackgroundPlayer, type BackgroundPlayerHandle } from "$lib/api/youtubeApi";
   import { getLocalWatchNext, type LocalWatchNext } from "$lib/continuation";
-  import { displayTitle, stripHtml } from "$lib/format";
+  import { displayTitle, formatAirDate, stripHtml } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
+  import { onDestroy } from "svelte";
 
   let { animeId }: { animeId: number } = $props();
 
@@ -93,11 +96,47 @@
     try {
       anime = await getAnimeDetails(id);
       episodes = buildEpisodes(anime);
-      void getEpisodeMedia(id, anime.mal_id).then((media) => {
-        episodes = episodes.map((ep) => {
-          const info = media.get(ep.episode_number);
-          return info ? { ...ep, thumbnail: info.thumbnail ?? ep.thumbnail, title: ep.title ?? info.title } : ep;
-        });
+      void getEpisodeMedia(
+        id,
+        anime.mal_id,
+        anime.title_english || anime.title_romaji,
+        anime.start_date,
+        anime.season_year,
+        anime.episode_count
+      ).then((media) => {
+        if (media && media.size > 0) {
+          if (episodes.length === 0) {
+            const maxEp = Math.max(...media.keys());
+            const eps: EpisodeListItem[] = [];
+            for (let n = 1; n <= maxEp; n += 1) {
+              const info = media.get(n);
+              eps.push({
+                episode_id: n,
+                episode_number: n,
+                title: info?.title ?? `Episode ${n}`,
+                duration_seconds: anime?.episode_duration ? anime.episode_duration * 60 : null,
+                air_date: info?.air_date ?? null,
+                thumbnail: info?.thumbnail ?? null
+              });
+            }
+            episodes = eps;
+          } else {
+            episodes = episodes.map((ep) => {
+              const info = media.get(ep.episode_number);
+              return {
+                ...ep,
+                thumbnail: info?.thumbnail ?? ep.thumbnail,
+                title: info?.title ?? ep.title ?? `Episode ${ep.episode_number}`,
+                air_date: info?.air_date ?? ep.air_date
+              };
+            });
+          }
+        } else {
+          episodes = episodes.map((ep) => ({
+            ...ep,
+            title: ep.title ?? `Episode ${ep.episode_number}`
+          }));
+        }
       });
       franchise = await getFranchise(id).catch(() => []);
       watchNext = await getLocalWatchNext(id, anime.episode_count, franchise).catch(() => null);
@@ -107,6 +146,46 @@
       loading = false;
     }
   }
+
+  // Banner trailer: AniList's own trailer first, falling back to Jikan/MAL
+  // for entries (like Cyberpunk: Edgerunners) that AniList has none for.
+  // Keyed off `anime` so it naturally tracks whichever season/entry the
+  // user is currently viewing — switching seasons swaps the trailer too.
+  let fallbackTrailerId = $state<string | null>(null);
+  const trailerId = $derived(anime?.trailer_id ?? fallbackTrailerId);
+
+  $effect(() => {
+    const current = anime;
+    fallbackTrailerId = null;
+    if (current && !current.trailer_id && current.mal_id) {
+      void getFallbackTrailerId(current.mal_id).then((id) => {
+        if (anime?.id === current.id) {
+          fallbackTrailerId = id;
+        }
+      });
+    }
+  });
+
+  let bannerPlayerHost = $state<HTMLDivElement | undefined>(undefined);
+  let bannerPlayer: BackgroundPlayerHandle | null = null;
+  let bannerVideoLoaded = $state(false);
+
+  $effect(() => {
+    bannerVideoLoaded = false;
+    if (!trailerId) {
+      bannerPlayer?.stop();
+      return;
+    }
+    if (bannerPlayer) {
+      bannerPlayer.loadVideo(trailerId);
+    } else if (bannerPlayerHost) {
+      bannerPlayer = createBackgroundPlayer(bannerPlayerHost, trailerId, () => (bannerVideoLoaded = true));
+    }
+  });
+
+  onDestroy(() => {
+    bannerPlayer?.destroy();
+  });
 </script>
 
 {#if loading}
@@ -118,10 +197,17 @@
   <p class="py-16 text-center text-sm text-destructive">{error}</p>
 {:else if anime}
   <div class="flex flex-col gap-8">
-    <!-- Header Banner Image Preview -->
-    {#if anime.banner_image}
+    <!-- Header Banner: trailer plays once loaded, banner image is the poster -->
+    {#if anime.banner_image || trailerId}
       <div class="relative h-44 sm:h-64 lg:h-80 w-full overflow-hidden rounded-3xl shadow-xl ring-1 ring-border/40">
-        <img src={anime.banner_image} alt="" class="h-full w-full object-cover" />
+        {#if anime.banner_image}
+          <img src={anime.banner_image} alt="" class="h-full w-full object-cover" />
+        {/if}
+        <div
+          class="banner-video-stage absolute inset-0 {trailerId && bannerVideoLoaded ? 'opacity-100' : 'opacity-0'}"
+        >
+          <div bind:this={bannerPlayerHost}></div>
+        </div>
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent"></div>
       </div>
     {/if}
@@ -159,21 +245,41 @@
         {/if}
 
         <div class="min-w-0 flex-1">
-        <h2 class="text-3xl font-bold tracking-tight">{title}</h2>
-        <p class="mt-1 text-sm text-muted-foreground">
-          {[anime.title_romaji, anime.title_native].filter((t) => t && t !== title).join(" · ")}
-        </p>
-        <p class="mt-2 text-sm text-muted-foreground">{metaLine}</p>
-        {#if anime.season_label || anime.arc_name}
-          <p class="mt-1 text-sm font-medium">
-            {[anime.season_label, anime.arc_name].filter(Boolean).join(" — ")}
-          </p>
-        {/if}
-        {#if anime.start_date}
-          <p class="mt-1 text-xs text-muted-foreground">
-            Aired {anime.start_date}{anime.end_date ? ` → ${anime.end_date}` : ""}
-          </p>
-        {/if}
+          <h1 class="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white drop-shadow-sm">{title}</h1>
+          {#if [anime.title_romaji, anime.title_native].filter((t) => t && t !== title).length > 0}
+            <p class="mt-1 text-sm text-slate-300 font-medium">
+              {[anime.title_romaji, anime.title_native].filter((t) => t && t !== title).join(" · ")}
+            </p>
+          {/if}
+
+          <!-- Genre Details Badges -->
+          {#if anime.genres && anime.genres.length > 0}
+            <div class="mt-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span class="inline-flex items-center gap-1 rounded-md bg-muted/90 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 text-primary shrink-0">
+                  <path fill-rule="evenodd" d="M4.5 2A2.5 2.5 0 0 0 2 4.5v3.879a2.5 2.5 0 0 0 .732 1.767l7.5 7.5a2.5 2.5 0 0 0 3.536 0l3.878-3.878a2.5 2.5 0 0 0 0-3.536l-7.5-7.5A2.5 2.5 0 0 0 8.38 2H4.5ZM5 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+                </svg>
+                Genres
+              </span>
+              {#each anime.genres as genre}
+                <span class="inline-flex items-center rounded-lg border border-primary/30 bg-primary/15 px-2.5 py-0.5 text-xs font-bold text-primary shadow-xs backdrop-blur-sm transition-all hover:bg-primary/25 hover:border-primary">
+                  {genre}
+                </span>
+              {/each}
+            </div>
+          {/if}
+
+          <p class="mt-2.5 text-sm font-medium text-slate-300">{metaLine}</p>
+          {#if anime.season_label || anime.arc_name}
+            <p class="mt-1 text-sm font-semibold text-foreground">
+              {[anime.season_label, anime.arc_name].filter(Boolean).join(" — ")}
+            </p>
+          {/if}
+          {#if anime.start_date}
+            <p class="mt-1 text-xs text-muted-foreground">
+              Aired {anime.start_date}{anime.end_date ? ` → ${anime.end_date}` : ""}
+            </p>
+          {/if}
         {#if anime.description}
           <div class="mt-3.5">
             <p class="max-w-prose whitespace-pre-line text-sm leading-relaxed text-foreground/90 transition-all {isDescriptionExpanded ? '' : 'line-clamp-3 sm:line-clamp-4'}">
@@ -251,32 +357,78 @@
     {/if}
 
     {#if franchise.length > 1}
-      <section aria-label="Franchise timeline">
-        <h3 class="mb-3 text-lg font-semibold tracking-tight">Franchise</h3>
-        <ol class="flex gap-3 overflow-x-auto pb-2">
+      <section aria-label="Franchise timeline" class="rounded-3xl border border-border/80 bg-card/70 p-4 sm:p-6 shadow-xl backdrop-blur-xl">
+        <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-lg sm:text-xl font-bold tracking-tight text-foreground">Franchise Timeline</h3>
+              <span class="rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-bold text-primary">
+                {franchise.length} {franchise.length === 1 ? 'Entry' : 'Entries'}
+              </span>
+            </div>
+            <p class="text-xs text-muted-foreground mt-0.5">Chronological release order of all seasons, movies & spin-offs</p>
+          </div>
+        </div>
+
+        <ol class="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
           {#each franchise as entry (entry.anime_id)}
+            {@const isCurrent = entry.anime_id === anime.id}
             <li>
               <button
                 type="button"
-                class="flex w-48 flex-col gap-1 rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {entry.anime_id === anime.id
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-card hover:bg-accent'}"
+                class="group relative flex w-64 sm:w-72 gap-3.5 rounded-2xl border p-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {isCurrent
+                  ? 'border-primary bg-primary/20 shadow-lg shadow-primary/10 ring-2 ring-primary/60 scale-[1.01]'
+                  : 'border-border/80 bg-card/90 hover:border-primary/50 hover:bg-accent/70 hover:shadow-md'}"
                 onclick={() => router.go(`/anime/${entry.anime_id}`)}
               >
-                <span class="text-xs text-muted-foreground">
-                  #{entry.sequence_order ?? "?"} · {[entry.format, entry.start_date?.slice(0, 4)].filter(Boolean).join(" · ")}
-                  {#if entry.status === "NOT_YET_RELEASED" || (!entry.start_date && entry.status !== "FINISHED" && entry.status !== "RELEASING")}
-                    <span class="ml-1 rounded bg-amber-500/15 px-1 py-0.5 text-[10px] font-bold text-amber-400">UPCOMING</span>
-                  {/if}
-                </span>
-                <span class="line-clamp-2 text-sm font-medium">
-                  {displayTitle(entry.title_english, entry.title_romaji)}
-                </span>
-                <span class="text-xs text-muted-foreground">
-                  {[entry.season_label, entry.episode_count ? `${entry.episode_count} eps` : null]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
+                <!-- Mini poster cover preview -->
+                {#if entry.cover_image}
+                  <div class="relative h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-muted shadow-md ring-1 ring-white/10 group-hover:ring-primary/40 transition-all">
+                    <img
+                      src={entry.cover_image}
+                      alt=""
+                      class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  </div>
+                {/if}
+
+                <!-- Info content -->
+                <div class="min-w-0 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="rounded-md bg-muted px-2 py-0.5 text-[10px] font-extrabold text-foreground">
+                        #{entry.sequence_order ?? "?"}
+                      </span>
+                      {#if entry.format}
+                        <span class="rounded-md bg-primary/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                          {entry.format}
+                        </span>
+                      {/if}
+                      {#if entry.start_date}
+                        <span class="text-xs font-semibold text-foreground/80">
+                          {entry.start_date.slice(0, 4)}
+                        </span>
+                      {/if}
+                      {#if entry.status === "NOT_YET_RELEASED" || (!entry.start_date && entry.status !== "FINISHED" && entry.status !== "RELEASING")}
+                        <span class="rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">UPCOMING</span>
+                      {/if}
+                      {#if isCurrent}
+                        <span class="rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground shadow-sm">CURRENT</span>
+                      {/if}
+                    </div>
+
+                    <p class="mt-1.5 line-clamp-2 text-xs sm:text-sm font-bold text-foreground transition-colors group-hover:text-primary">
+                      {displayTitle(entry.title_english, entry.title_romaji)}
+                    </p>
+                  </div>
+
+                  <p class="mt-1 text-xs text-muted-foreground font-medium">
+                    {[entry.season_label, entry.episode_count ? `${entry.episode_count} eps` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
               </button>
             </li>
           {/each}
@@ -385,7 +537,7 @@
               type="button"
               class="group flex flex-col items-center justify-center rounded-lg border border-border/70 bg-card/80 py-2.5 px-1 text-center transition-all hover:border-primary hover:bg-primary/10 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onclick={() => router.go(`/watch/${anime?.id}/${ep.episode_number}`)}
-              title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}` : `Episode ${ep.episode_number}`}
+              title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}${ep.air_date ? ` (${formatAirDate(ep.air_date)})` : ''}` : `Episode ${ep.episode_number}`}
             >
               <span class="text-xs font-bold text-foreground group-hover:text-primary">{ep.episode_number}</span>
               <span class="text-[9px] uppercase tracking-wider text-muted-foreground/80">EP</span>
@@ -395,7 +547,7 @@
       {:else}
         <ul class="divide-y divide-border/50 rounded-xl border border-border bg-card/40 backdrop-blur">
           {#each displayedEpisodes as ep (ep.episode_id)}
-            {@const previewImg = ep.thumbnail}
+            {@const previewImg = ep.thumbnail || anime.banner_image || anime.cover_image}
             <li>
               <button
                 type="button"
@@ -410,6 +562,12 @@
                       alt=""
                       loading="lazy"
                       class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      onerror={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (anime?.cover_image && target.src !== anime.cover_image) {
+                          target.src = anime.cover_image;
+                        }
+                      }}
                     />
                   {:else}
                     <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/10 via-background to-muted text-muted-foreground">
@@ -423,6 +581,12 @@
                   <span class="absolute top-1.5 left-1.5 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white shadow backdrop-blur">
                     EP {ep.episode_number}
                   </span>
+
+                  {#if ep.air_date}
+                    <span class="absolute bottom-1.5 left-1.5 rounded bg-black/80 px-1.5 py-0.5 text-[9px] font-medium text-white/90 shadow backdrop-blur">
+                      {formatAirDate(ep.air_date)}
+                    </span>
+                  {/if}
 
                   {#if ep.duration_seconds}
                     <span class="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-medium text-white/90 shadow backdrop-blur">
@@ -440,13 +604,23 @@
                   </div>
                 </div>
 
-                <!-- Clean Episode Info: Title & Tag -->
+                <!-- Clean Episode Info: Title, Release Date & Tag -->
                 <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center gap-2">
                     <span class="rounded bg-primary/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary">
                       Episode {ep.episode_number}
                     </span>
-                    {#if ep.thumbnail}<span class="text-xs text-muted-foreground">Preview Available</span>{/if}
+                    {#if ep.air_date}
+                      <span class="inline-flex items-center gap-1 rounded bg-muted/90 px-2 py-0.5 text-[11px] font-medium text-foreground/90 ring-1 ring-border/60">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 text-primary shrink-0" aria-hidden="true">
+                          <path fill-rule="evenodd" d="M5.75 2a.75.75 0 0 1 .75.75V4h7V2.75a.75.75 0 0 1 1.5 0V4h.25A2.75 2.75 0 0 1 18 6.75v8.5A2.75 2.75 0 0 1 15.25 18H4.75A2.75 2.75 0 0 1 2 15.25v-8.5A2.75 2.75 0 0 1 4.75 4H5V2.75A.75.75 0 0 1 5.75 2Zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75Z" clip-rule="evenodd" />
+                        </svg>
+                        {formatAirDate(ep.air_date)}
+                      </span>
+                    {/if}
+                    <span class="text-xs text-muted-foreground">
+                      {ep.thumbnail ? "HD Episode Preview" : "Preview Available"}
+                    </span>
                   </div>
                   <p class="mt-1.5 truncate text-base font-semibold text-foreground transition-colors group-hover:text-primary">
                     {ep.title && ep.title !== `Episode ${ep.episode_number}` ? ep.title : `Episode ${ep.episode_number}`}
@@ -476,3 +650,27 @@
     </section>
   </div>
 {/if}
+
+<style>
+  /* Scale the 16:9 YouTube iframe so it covers the banner with no
+     letterboxing, regardless of the banner's own aspect ratio. */
+  .banner-video-stage {
+    container-type: size;
+    overflow: hidden;
+    pointer-events: none;
+    transition: opacity 0.7s ease-out;
+  }
+
+  /* :global because this iframe is injected by the YouTube IFrame API, not
+     by Svelte's template, so it never receives the scoped-style class. */
+  :global(.banner-video-stage iframe) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: max(100cqw, 177.78cqh);
+    height: max(100cqh, 56.25cqw);
+    border: 0;
+    pointer-events: none;
+  }
+</style>

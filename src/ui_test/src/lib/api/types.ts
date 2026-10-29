@@ -63,6 +63,7 @@ export interface AnimeSearchResultItem {
   genres?: string[];
   latest_episode?: number | null;
   trailer_thumbnail?: string | null;
+  trailer_id?: string | null;
 }
 
 export interface AnimeSearchResponse {
@@ -93,6 +94,7 @@ export type AnimeSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
 export interface AnimeDetails {
   score?: number | null;
   popularity?: number | null;
+  genres?: string[];
   id: number;
   anilist_id: number | null;
   mal_id: number | null;
@@ -115,6 +117,7 @@ export interface AnimeDetails {
   sequence_order: number | null;
   season_label: string | null;
   arc_name: string | null;
+  trailer_id?: string | null;
 }
 
 export interface AnimeDetailsResponse {
@@ -128,6 +131,7 @@ export interface FranchiseEntry {
   anilist_id: number | null;
   title_romaji: string | null;
   title_english: string | null;
+  cover_image?: string | null;
   format: AnimeFormat | null;
   season_label: string | null;
   arc_name: string | null;

@@ -61,27 +61,42 @@
 
 <div class="flex flex-col gap-6">
   <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-4">
-    <div class="flex items-center gap-2.5">
-      <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/15 text-rose-500">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5" aria-hidden="true">
+  <div class="flex flex-wrap items-center justify-between gap-4 border-b border-border/80 pb-5">
+    <div class="flex items-center gap-3.5">
+      <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white shadow-lg shadow-rose-500/25 ring-2 ring-rose-500/30">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-6 w-6" aria-hidden="true">
           <path d="m9.653 16.915-.005-.003-.019-.01a20.759 20.759 0 0 1-1.16-1.107 20.373 20.373 0 0 1-3.69-4.836A7.472 7.472 0 0 1 4 7.5C4 4.462 6.462 2 9.5 2a5.498 5.498 0 0 1 4.298 2.043A5.498 5.498 0 0 1 18.5 7.5c0 1.258-.337 2.44-.925 3.46a20.373 20.373 0 0 1-3.69 4.836 20.758 20.758 0 0 1-1.16 1.107l-.02.01-.005.003h-.002a.75.75 0 0 1-.698 0l-.002-.003Z" />
         </svg>
       </span>
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">Liked Anime</h2>
-        <p class="text-xs text-muted-foreground">Your saved collection of loved series ({likes.count})</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-sm">Liked Anime</h1>
+        <p class="text-xs sm:text-sm font-medium text-slate-300 mt-0.5">
+          Your saved collection of loved series · <span class="font-bold text-white">{likes.count} {likes.count === 1 ? 'anime' : 'animes'}</span>
+        </p>
       </div>
     </div>
 
     {#if likes.items.length > 0}
-      <div class="w-full sm:w-64">
+      <div class="relative w-full sm:w-72">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none">
+          <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clip-rule="evenodd" />
+        </svg>
         <input
           type="text"
           bind:value={searchQuery}
           placeholder="Filter liked anime…"
-          class="h-9 w-full rounded-lg border border-input bg-card px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="h-10 w-full rounded-xl border border-border/80 bg-card/90 pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground shadow-sm backdrop-blur transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
+        {#if searchQuery}
+          <button
+            type="button"
+            onclick={() => (searchQuery = "")}
+            class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+            aria-label="Clear filter"
+          >
+            ✕
+          </button>
+        {/if}
       </div>
     {/if}
   </div>

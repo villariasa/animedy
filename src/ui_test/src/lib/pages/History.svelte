@@ -75,16 +75,16 @@
 
 <div class="flex flex-col gap-6">
   <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-4">
-    <div class="flex items-center gap-2.5">
-      <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5" aria-hidden="true">
+  <div class="flex flex-wrap items-center justify-between gap-4 border-b border-border/80 pb-5">
+    <div class="flex items-center gap-3.5">
+      <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-indigo-600 text-primary-foreground shadow-lg shadow-primary/25 ring-2 ring-primary/30">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-6 w-6" aria-hidden="true">
           <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 0 0 0-1.5h-3.25V5Z" clip-rule="evenodd" />
         </svg>
       </span>
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">Watch History</h2>
-        <p class="text-xs text-muted-foreground">
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-sm">Watch History</h1>
+        <p class="text-xs sm:text-sm font-medium text-slate-300 mt-0.5">
           Saved locally on this browser ({items.length} records)
         </p>
       </div>

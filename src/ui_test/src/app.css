@@ -1,27 +1,7 @@
 @import "tailwindcss";
 
 /* shadcn-svelte design tokens (Tailwind v4 CSS-first config) */
-:root {
-  --background: oklch(0.985 0.002 285);
-  --foreground: oklch(0.17 0.02 285);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.17 0.02 285);
-  --primary: oklch(0.55 0.22 293);
-  --primary-foreground: oklch(0.985 0.002 285);
-  --secondary: oklch(0.93 0.01 285);
-  --secondary-foreground: oklch(0.25 0.02 285);
-  --muted: oklch(0.93 0.01 285);
-  --muted-foreground: oklch(0.5 0.02 285);
-  --accent: oklch(0.93 0.01 285);
-  --accent-foreground: oklch(0.25 0.02 285);
-  --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: oklch(0.985 0.002 285);
-  --border: oklch(0.89 0.005 285);
-  --input: oklch(0.89 0.005 285);
-  --ring: oklch(0.55 0.22 293);
-  --radius: 0.5rem;
-}
-
+:root,
 .dark {
   --background: oklch(0.16 0.015 285);
   --foreground: oklch(0.96 0.005 285);
@@ -40,6 +20,7 @@
   --border: oklch(0.3 0.015 285);
   --input: oklch(0.3 0.015 285);
   --ring: oklch(0.65 0.2 293);
+  --radius: 0.5rem;
 }
 
 @theme inline {

@@ -113,7 +113,8 @@ function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
     trailer_thumbnail:
       m.trailer?.site === "youtube" && m.trailer.id
         ? `https://img.youtube.com/vi/${m.trailer.id}/maxresdefault.jpg`
-        : null
+        : null,
+    trailer_id: m.trailer?.site === "youtube" && m.trailer.id ? m.trailer.id : null
   };
 }
 
@@ -139,10 +140,12 @@ function toDetails(m: AniListMedia): AnimeDetails {
     banner_image: m.bannerImage,
     score: m.averageScore,
     popularity: m.popularity,
+    genres: m.genres ?? [],
     franchise_key: null,
     sequence_order: null,
     season_label: null,
-    arc_name: null
+    arc_name: null,
+    trailer_id: m.trailer?.site === "youtube" && m.trailer.id ? m.trailer.id : null
   };
 }
 
@@ -297,20 +300,35 @@ export async function getAnimeDetails(id: number): Promise<AnimeDetails> {
 export function buildEpisodes(anime: AnimeDetails): EpisodeListItem[] {
   const count = anime.episode_count ?? 0;
   const episodes: EpisodeListItem[] = [];
+  const parts = anime.start_date ? anime.start_date.split("-") : null;
+  const p0 = parts?.[0];
+  const p1 = parts?.[1];
+  const p2 = parts?.[2];
+  const baseDate =
+    p0 && p1 && p2
+      ? new Date(parseInt(p0, 10), parseInt(p1, 10) - 1, parseInt(p2, 10))
+      : null;
+
   for (let n = 1; n <= count; n += 1) {
+    let airDate: string | null = null;
+    if (baseDate && !isNaN(baseDate.getTime())) {
+      const epDate = new Date(baseDate);
+      epDate.setDate(epDate.getDate() + (n - 1) * 7);
+      airDate = epDate.toISOString().slice(0, 10);
+    }
     episodes.push({
       episode_id: n,
       episode_number: n,
       title: null,
       duration_seconds: anime.episode_duration ? anime.episode_duration * 60 : null,
-      air_date: null,
+      air_date: airDate,
       thumbnail: null
     });
   }
   return episodes;
 }
 
-function deriveSeasonLabel(m: AniListMedia, position: number): string {
+function deriveSeasonLabel(m: AniListMedia, tvSeasonNumber?: number): string {
   const title = m.title.english ?? m.title.romaji ?? "";
   let label: string;
   const seasonMatch = /season\s*(\d+)/i.exec(title);
@@ -323,10 +341,12 @@ function deriveSeasonLabel(m: AniListMedia, position: number): string {
     label = `Part ${partMatch[1]}`;
   } else if (m.format === "MOVIE") {
     label = "Movie";
-  } else if (m.format === "OVA" || m.format === "SPECIAL" || m.format === "ONA") {
-    label = m.format === "OVA" ? "OVA" : m.format === "ONA" ? "ONA" : "Special";
+  } else if (m.format === "OVA" || m.format === "SPECIAL") {
+    label = m.format === "OVA" ? "OVA" : "Special";
+  } else if (tvSeasonNumber !== undefined && tvSeasonNumber > 0) {
+    label = `Season ${tvSeasonNumber}`;
   } else {
-    label = `Season ${position + 1}`;
+    label = m.format === "ONA" ? "ONA" : "TV";
   }
   return label;
 }
@@ -336,74 +356,100 @@ function startTimestamp(m: AniListMedia): number {
   return iso ? new Date(iso).getTime() : Number.MAX_SAFE_INTEGER;
 }
 
+const ANIME_FORMATS = new Set(["TV", "TV_SHORT", "MOVIE", "SPECIAL", "OVA", "ONA"]);
+const EXPAND_RELATIONS = new Set(["PREQUEL", "SEQUEL", "PARENT", "OTHER"]);
+const INCLUDE_RELATIONS = new Set([
+  "PREQUEL",
+  "SEQUEL",
+  "PARENT",
+  "SIDE_STORY",
+  "SPIN_OFF",
+  "ALTERNATIVE",
+  "OTHER",
+  "SUMMARY"
+]);
+
 /**
- * Client-side franchise walk: PREQUEL edges back to the root, SEQUEL edges
- * forward for the main chain (ordered by start date), side entries
- * (movies/OVAs/spin-offs) appended after. Bounded + cached per anime id.
+ * Client-side franchise walk: BFS traversal following prequel, sequel,
+ * parent, side story, and related anime edges. Sorted chronologically
+ * by release date and cached per anime id.
  */
 export async function getFranchise(id: number): Promise<FranchiseEntry[]> {
-  const cacheKey = `anilist:franchise:v3:${id}`;
+  const cacheKey = `anilist:franchise:v5:${id}`;
   const cached = await getCached<FranchiseEntry[]>(cacheKey).catch(() => undefined);
   if (cached !== undefined) {
     return cached;
   }
 
-  // Walk back to the root.
-  let current = await fetchMedia(id, true);
-  const visited = new Set<number>([current.id]);
-  for (let hops = 0; hops < 15; hops += 1) {
-    const prequel = current.relations?.edges.find((e) => e.relationType === "PREQUEL");
-    if (!prequel || visited.has(prequel.node.id)) {
-      break;
-    }
-    visited.add(prequel.node.id);
-    current = await fetchMedia(prequel.node.id, true);
-  }
+  const mediaMap = new Map<number, AniListMedia>();
+  const visitedForExpansion = new Set<number>();
+  const queue: number[] = [id];
 
-  // BFS forward along SEQUEL edges, collecting side entries.
-  const chain: AniListMedia[] = [];
-  const side: AniListMedia[] = [];
-  const seen = new Set<number>();
-  const pending: AniListMedia[] = [current];
-  while (pending.length > 0 && seen.size < 25) {
-    const next = pending.shift();
-    if (!next || seen.has(next.id)) {
+  let fetchCount = 0;
+  while (queue.length > 0 && fetchCount < 8) {
+    const curId = queue.shift();
+    if (!curId || visitedForExpansion.has(curId)) continue;
+    visitedForExpansion.add(curId);
+
+    fetchCount += 1;
+    let media: AniListMedia | null = null;
+    try {
+      media = await fetchMedia(curId, true);
+    } catch {
       continue;
     }
-    seen.add(next.id);
-    const full = next.relations ? next : await fetchMedia(next.id, true);
-    chain.push(full);
-    for (const edge of full.relations?.edges ?? []) {
-      if (edge.relationType === "SEQUEL" && !seen.has(edge.node.id)) {
-        pending.push(edge.node);
-      } else if (
-        (edge.relationType === "SIDE_STORY" || edge.relationType === "SPIN_OFF" || edge.relationType === "ALTERNATIVE") &&
-        !seen.has(edge.node.id) &&
-        !side.some((s) => s.id === edge.node.id)
+    if (!media) continue;
+    mediaMap.set(media.id, media);
+
+    for (const edge of media.relations?.edges ?? []) {
+      const node = edge.node;
+      if (!node?.id) continue;
+      if (!INCLUDE_RELATIONS.has(edge.relationType)) continue;
+      if (node.format && !ANIME_FORMATS.has(node.format)) continue;
+
+      if (!mediaMap.has(node.id)) {
+        mediaMap.set(node.id, node);
+      }
+
+      if (
+        EXPAND_RELATIONS.has(edge.relationType) &&
+        !visitedForExpansion.has(node.id) &&
+        queue.length < 6
       ) {
-        side.push(edge.node);
+        queue.push(node.id);
       }
     }
   }
-  // ONE chronological timeline: main chain + movies/OVAs/side stories all
-  // sorted by premiere date (undated entries sink to the end).
-  const all = chain.concat(side.filter((s) => !seen.has(s.id)));
+
+  const all = [...mediaMap.values()];
   all.sort((a, b) => startTimestamp(a) - startTimestamp(b));
 
-  const entries: FranchiseEntry[] = all.map((m, i) => ({
-    anime_id: m.id,
-    anilist_id: m.id,
-    title_romaji: m.title.romaji,
-    title_english: m.title.english,
-    format: (m.format as AnimeFormat) ?? null,
-    status: (m.status as AnimeStatus) ?? null,
-    season_label: deriveSeasonLabel(m, i),
-    arc_name: null,
-    sequence_order: i + 1,
-    episode_count: m.episodes,
-    start_date: fuzzyDate(m.startDate)
-  }));
-  await putCached(cacheKey, entries).catch(() => undefined);
+  let tvCount = 0;
+  const entries: FranchiseEntry[] = all.map((m, i) => {
+    let tvNum: number | undefined;
+    if (m.format === "TV" || m.format === "TV_SHORT" || m.format === "ONA") {
+      tvCount += 1;
+      tvNum = tvCount;
+    }
+    return {
+      anime_id: m.id,
+      anilist_id: m.id,
+      title_romaji: m.title.romaji,
+      title_english: m.title.english,
+      cover_image: m.coverImage?.extraLarge ?? m.coverImage?.large ?? null,
+      format: (m.format as AnimeFormat) ?? null,
+      status: (m.status as AnimeStatus) ?? null,
+      season_label: deriveSeasonLabel(m, tvNum),
+      arc_name: null,
+      sequence_order: i + 1,
+      episode_count: m.episodes,
+      start_date: fuzzyDate(m.startDate)
+    };
+  });
+
+  if (entries.length > 0) {
+    await putCached(cacheKey, entries).catch(() => undefined);
+  }
   return entries;
 }
 
@@ -498,14 +544,52 @@ export async function getAiringInfo(ids: number[]): Promise<Map<number, AiringIn
   return map;
 }
 
-/** Per-episode thumbnails + titles. Primary: AniList streamingEpisodes
- * (Crunchyroll). Fallback: Jikan /videos/episodes (MAL episode stills) for
- * the many shows AniList hasn't indexed. */
+export interface EpisodeMediaItem {
+  thumbnail: string | null;
+  title: string | null;
+  air_date: string | null;
+}
+
+function parseRomanNumeral(str: string): number | null {
+  const m = /\b(X|IX|VIII|VII|VI|V|IV|III|II|I)\b/i.exec(str);
+  if (!m?.[1]) return null;
+  const map: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
+  return map[m[1].toUpperCase()] ?? null;
+}
+
+function detectSeasonNumber(title: string | null | undefined): number | null {
+  if (!title) return null;
+  const sMatch = /season\s*(\d+)/i.exec(title);
+  if (sMatch?.[1]) return parseInt(sMatch[1], 10);
+  const nthMatch = /(\d+)(?:nd|rd|th|st)\s*season/i.exec(title);
+  if (nthMatch?.[1]) return parseInt(nthMatch[1], 10);
+  const roman = parseRomanNumeral(title);
+  if (roman && roman > 1) return roman;
+  return null;
+}
+
+/** Per-episode thumbnails + official titles + release dates.
+ * 1. AniList streamingEpisodes (Crunchyroll titles & thumbnails).
+ * 2. TVMaze (official episode titles & airdates for the matching season).
+ * 3. Jikan fallback for MAL video stills.
+ * 4. Fallback weekly calculated dates based on anime premiere date. */
 export async function getEpisodeMedia(
   id: number,
-  malId: number | null = null
-): Promise<Map<number, { thumbnail: string | null; title: string | null }>> {
-  const map = new Map<number, { thumbnail: string | null; title: string | null }>();
+  malId: number | null = null,
+  animeTitle?: string | null,
+  startDate?: string | null,
+  seasonYear?: number | null,
+  episodeCount?: number | null
+): Promise<Map<number, EpisodeMediaItem>> {
+  const cacheKey = `anilist:epmedia:v6:${id}`;
+  const cached = await getCached<Array<[number, EpisodeMediaItem]>>(cacheKey).catch(() => undefined);
+  if (cached !== undefined && cached.length > 0) {
+    return new Map(cached);
+  }
+
+  const map = new Map<number, EpisodeMediaItem>();
+
+  // 1. AniList streamingEpisodes
   try {
     const data = await gql<{ Media: { streamingEpisodes: Array<{ title: string | null; thumbnail: string | null }> } }>(
       `anilist:epthumbs:${id}`,
@@ -521,16 +605,115 @@ export async function getEpisodeMedia(
       if (num > 0 && !map.has(num)) {
         map.set(num, {
           thumbnail: raw.thumbnail,
-          title: raw.title ? raw.title.replace(/^episode\s*\d+\s*[-–—:]\s*/i, "") : null
+          title: raw.title ? raw.title.replace(/^episode\s*\d+\s*[-–—:]\s*/i, "").trim() : null,
+          air_date: null
         });
       }
     }
   } catch {
-    // fall through to Jikan
+    // continue
   }
 
+  // 2. TVMaze (official titles, release dates, and image stills for the matching season)
+  if (animeTitle) {
+    try {
+      const cleanTitle = animeTitle
+        .replace(/\s+(season\s*\d+|part\s*\d+|2nd|3rd|[4-9]th|final\s*season|\b(X|IX|VIII|VII|VI|V|IV|III|II)\b).*/i, "")
+        .trim();
+      const res = await fetch(
+        `https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(cleanTitle)}&embed=episodes`,
+        { signal: AbortSignal.timeout(4000) }
+      );
+      if (res.ok) {
+        interface TVMazeEp {
+          name: string | null;
+          season: number;
+          number: number | null;
+          airdate: string | null;
+          image: { original?: string | null; medium?: string | null } | null;
+        }
+        const payload = (await res.json()) as { _embedded?: { episodes?: TVMazeEp[] } };
+        const tvEps = payload._embedded?.episodes ?? [];
+        if (tvEps.length > 0) {
+          const allSeasons = [...new Set(tvEps.map((e) => e.season))];
+          const isYearSeasons = allSeasons.every((s) => s >= 1900);
+          const startYear = startDate ? parseInt(startDate.split("-")[0] ?? "0", 10) : (seasonYear ?? null);
+          const detectedSeason = detectSeasonNumber(animeTitle);
+
+          let selectedEps: TVMazeEp[] = [];
+          if (isYearSeasons) {
+            // E.g. Naruto (2002-2007) — single continuous long-running anime
+            selectedEps = tvEps;
+          } else {
+            // Multi-season show (e.g. Mushoku Tensei, Attack on Titan, etc.)
+            let targetSeason: number | null = null;
+            if (detectedSeason !== null && allSeasons.includes(detectedSeason)) {
+              targetSeason = detectedSeason;
+            } else if (startYear) {
+              const matchSeason = allSeasons.find((s) => {
+                const sEps = tvEps.filter((e) => e.season === s && e.airdate);
+                return sEps.some((e) => {
+                  const y = e.airdate ? parseInt(e.airdate.slice(0, 4), 10) : 0;
+                  return Math.abs(y - startYear) <= 1;
+                });
+              });
+              if (matchSeason !== undefined) {
+                targetSeason = matchSeason;
+              }
+            }
+            if (targetSeason === null && detectedSeason === null) {
+              targetSeason = 1;
+            }
+
+            if (targetSeason !== null) {
+              selectedEps = tvEps.filter((e) => e.season === targetSeason);
+            }
+          }
+
+          if (selectedEps.length > 0) {
+            // Find best starting episode offset based on startDate (for Part 2 / split-cour)
+            let startIndex = 0;
+            if (startDate) {
+              const targetTime = new Date(startDate).getTime();
+              let minDiff = Infinity;
+              let bestIdx = 0;
+              for (let idx = 0; idx < selectedEps.length; idx += 1) {
+                const ep = selectedEps[idx];
+                if (ep?.airdate) {
+                  const epTime = new Date(ep.airdate).getTime();
+                  const diff = Math.abs(epTime - targetTime);
+                  if (diff < minDiff && diff <= 30 * 24 * 3600 * 1000) {
+                    minDiff = diff;
+                    bestIdx = idx;
+                  }
+                }
+              }
+              if (minDiff < Infinity) {
+                startIndex = bestIdx;
+              }
+            }
+
+            const totalNeeded = episodeCount ?? (selectedEps.length - startIndex);
+            for (let n = 1; n <= totalNeeded; n += 1) {
+              const ep = selectedEps[startIndex + n - 1];
+              if (!ep) continue;
+              const existing = map.get(n);
+              const thumb = existing?.thumbnail ?? ep.image?.original ?? ep.image?.medium ?? null;
+              const title = existing?.title ?? ep.name ?? null;
+              const airDate = existing?.air_date ?? ep.airdate ?? null;
+              map.set(n, { thumbnail: thumb, title, air_date: airDate });
+            }
+          }
+        }
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  // 3. Fallback Jikan MAL video stills
   if (map.size === 0 && malId !== null) {
-    const cacheKey = `jikan:epthumbs:${malId}`;
+    const jikanCacheKey = `jikan:epthumbs:${malId}`;
     try {
       interface JikanEpVideo {
         episode: string | null;
@@ -539,7 +722,9 @@ export async function getEpisodeMedia(
       }
       const collected: JikanEpVideo[] = [];
       for (let page = 1; page <= 2; page += 1) {
-        const res = await fetch(`https://api.jikan.moe/v4/anime/${malId}/videos/episodes?page=${page}`);
+        const res = await fetch(`https://api.jikan.moe/v4/anime/${malId}/videos/episodes?page=${page}`, {
+          signal: AbortSignal.timeout(3500)
+        });
         if (!res.ok) break;
         const payload = (await res.json()) as {
           data: JikanEpVideo[];
@@ -551,19 +736,42 @@ export async function getEpisodeMedia(
       for (const ep of collected) {
         const m = /episode\s*(\d+)/i.exec(ep.episode ?? "");
         const num = m ? parseInt(m[1] ?? "", 10) : 0;
-        if (num > 0 && !map.has(num)) {
-          map.set(num, { thumbnail: ep.images?.jpg?.image_url ?? null, title: ep.title });
+        if (num > 0) {
+          const existing = map.get(num);
+          map.set(num, {
+            thumbnail: ep.images?.jpg?.image_url ?? existing?.thumbnail ?? null,
+            title: ep.title ?? existing?.title ?? null,
+            air_date: existing?.air_date ?? null
+          });
         }
       }
-      if (map.size > 0) {
-        await putCached(cacheKey, [...map.entries()]).catch(() => undefined);
-      }
     } catch {
-      const cached = await getCached<Array<[number, { thumbnail: string | null; title: string | null }]>>(cacheKey).catch(() => undefined);
-      if (cached) {
-        for (const [k, v] of cached) map.set(k, v);
+      // continue
+    }
+  }
+
+  // 4. Fill in weekly estimated air_date if anime has start_date and episode lacks official air_date
+  if (startDate) {
+    const parts = startDate.split("-");
+    const p0 = parts[0];
+    const p1 = parts[1];
+    const p2 = parts[2];
+    if (p0 && p1 && p2) {
+      const baseDate = new Date(parseInt(p0, 10), parseInt(p1, 10) - 1, parseInt(p2, 10));
+      if (!isNaN(baseDate.getTime())) {
+        for (const [num, item] of map.entries()) {
+          if (!item.air_date) {
+            const epDate = new Date(baseDate);
+            epDate.setDate(epDate.getDate() + (num - 1) * 7);
+            item.air_date = epDate.toISOString().slice(0, 10);
+          }
+        }
       }
     }
+  }
+
+  if (map.size > 0) {
+    await putCached(cacheKey, [...map.entries()]).catch(() => undefined);
   }
   return map;
 }

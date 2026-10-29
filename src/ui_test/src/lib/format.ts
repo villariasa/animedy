@@ -84,3 +84,22 @@ export function formatCountdown(unixSeconds: number, nowMs: number): string {
   }
   return label;
 }
+
+/** Formats an ISO date "YYYY-MM-DD" to human readable "Month Day, Year" (e.g. "Oct 3, 2002"). */
+export function formatAirDate(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const parts = dateStr.split("-");
+  const yStr = parts[0];
+  const mStr = parts[1];
+  const dStr = parts[2];
+  if (yStr && mStr && dStr) {
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10) - 1;
+    const d = parseInt(dStr, 10);
+    const dt = new Date(y, m, d);
+    if (!isNaN(dt.getTime())) {
+      return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+  }
+  return dateStr;
+}

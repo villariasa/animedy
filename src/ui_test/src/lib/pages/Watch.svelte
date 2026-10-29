@@ -5,7 +5,7 @@
   import { getSkipSegments } from "$lib/api/aniskip";
   import { getCached, putCached } from "$lib/db/local";
   import { progressKey, saveLocalProgress, getLocalProgressFor } from "$lib/db/local";
-  import { displayTitle } from "$lib/format";
+  import { displayTitle, formatAirDate } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { settings } from "$lib/stores/settings.svelte";
 
@@ -328,10 +328,22 @@
       await settings.load();
       anime = await getAnimeDetails(aId);
       episodes = buildEpisodes(anime);
-      void getEpisodeMedia(aId, anime.mal_id).then((media) => {
+      void getEpisodeMedia(
+        aId,
+        anime.mal_id,
+        anime.title_english || anime.title_romaji,
+        anime.start_date,
+        anime.season_year,
+        anime.episode_count
+      ).then((media) => {
         episodes = episodes.map((ep) => {
           const info = media.get(ep.episode_number);
-          return info ? { ...ep, thumbnail: info.thumbnail ?? ep.thumbnail, title: ep.title ?? info.title } : ep;
+          return {
+            ...ep,
+            thumbnail: info?.thumbnail ?? ep.thumbnail,
+            title: info?.title ?? ep.title ?? `Episode ${ep.episode_number}`,
+            air_date: info?.air_date ?? ep.air_date
+          };
         });
       });
       animixUrl = await findAnimixEpisode(epNum);
@@ -748,7 +760,7 @@
                 type="button"
                 class="group flex flex-col items-center justify-center rounded-lg border p-2 text-center transition-all {ep.episode_number === episodeId ? 'border-primary bg-primary text-primary-foreground font-black shadow-md ring-2 ring-primary/40' : 'border border-border/70 bg-card hover:border-primary hover:bg-primary/10 hover:text-primary'}"
                 onclick={() => goToEpisode(ep.episode_number)}
-                title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}` : `Episode ${ep.episode_number}`}
+                title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}${ep.air_date ? ` (${formatAirDate(ep.air_date)})` : ''}` : `Episode ${ep.episode_number}`}
               >
                 <span class="text-xs font-bold leading-none">{ep.episode_number}</span>
                 <span class="text-[8px] uppercase tracking-wider opacity-70 mt-0.5">EP</span>
@@ -766,8 +778,8 @@
                   onclick={() => goToEpisode(ep.episode_number)}
                 >
                   <div class="relative h-10 w-16 shrink-0 overflow-hidden rounded-md bg-muted shadow-sm">
-                    {#if anime.cover_image}
-                      <img src={anime.cover_image} alt="" class="h-full w-full object-cover" />
+                    {#if ep.thumbnail || anime.banner_image || anime.cover_image}
+                      <img src={ep.thumbnail || anime.banner_image || anime.cover_image} alt="" class="h-full w-full object-cover" />
                     {/if}
                     <span class="absolute top-0.5 left-0.5 rounded bg-black/80 px-1 py-0.2 text-[8px] font-bold text-white">
                       EP {ep.episode_number}
@@ -775,9 +787,14 @@
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="truncate text-xs font-medium">{ep.title ?? `Episode ${ep.episode_number}`}</p>
-                    {#if ep.duration_seconds}
-                      <p class="text-[10px] text-muted-foreground">{Math.round(ep.duration_seconds / 60)} min</p>
-                    {/if}
+                    <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      {#if ep.air_date}
+                        <span>{formatAirDate(ep.air_date)}</span>
+                      {/if}
+                      {#if ep.duration_seconds}
+                        <span>{Math.round(ep.duration_seconds / 60)} min</span>
+                      {/if}
+                    </div>
                   </div>
                 </button>
               </li>

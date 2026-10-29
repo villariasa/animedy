@@ -12,16 +12,37 @@
   import NewEpisodeNotifier from "$lib/components/NewEpisodeNotifier.svelte";
   import AmbientBackground from "$lib/components/AmbientBackground.svelte";
   import { router } from "$lib/router.svelte";
+  import { homeReset } from "$lib/stores/homeReset.svelte";
 
   let isSearchActive = $state(false);
+
+  function goHome(): void {
+    router.go("/");
+    homeReset.trigger();
+  }
 </script>
 
 <div class="dark flex min-h-dvh flex-col bg-background text-foreground">
   <AmbientBackground />
   <header class="sticky top-0 z-40 flex items-center justify-between gap-2 sm:gap-4 border-b border-border/80 bg-background/95 px-3 sm:px-6 py-2.5 backdrop-blur-md">
-    <!-- Logo (hidden on mobile when search is actively expanded) -->
-    <div class="items-center gap-3 shrink-0 {isSearchActive ? 'hidden sm:flex' : 'flex'}">
-      <a href="#/" class="transition-opacity hover:opacity-90">
+    <!-- Logo & Home icon (hidden on mobile when search is actively expanded) -->
+    <div class="items-center gap-1.5 sm:gap-2 shrink-0 {isSearchActive ? 'hidden sm:flex' : 'flex'}">
+      <a
+        href="#/"
+        onclick={(e) => { e.preventDefault(); goHome(); }}
+        class="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-primary active:scale-95 {router.current.name === 'home' ? 'bg-primary/10 text-primary' : ''}"
+        title="Home"
+        aria-label="Home"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 sm:h-5 sm:w-5">
+          <path fill-rule="evenodd" d="M9.293 2.293a1 1 0 0 1 1.414 0l7 7A1 1 0 0 1 17 11h-1v6a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6H3a1 1 0 0 1-.707-1.707l7-7Z" clip-rule="evenodd" />
+        </svg>
+      </a>
+      <a
+        href="#/"
+        onclick={(e) => { e.preventDefault(); goHome(); }}
+        class="transition-opacity hover:opacity-90 flex items-center"
+      >
         <img src="/icons/logo-small.png" alt="Animedy" class="h-7 w-auto sm:h-8" />
       </a>
     </div>
