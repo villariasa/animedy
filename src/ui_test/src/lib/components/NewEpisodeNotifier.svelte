@@ -4,6 +4,7 @@
   import { displayTitle } from "$lib/format";
   import { likes } from "$lib/stores/likes.svelte";
   import { router } from "$lib/router.svelte";
+  import { notifyNewEpisodeOnce } from "$lib/notifications";
 
   interface Notice {
     anime_id: number;
@@ -41,6 +42,9 @@
             }));
           if (notices.length > 0) {
             setTimeout(() => (notices = []), 12_000);
+          }
+          for (const n of notices) {
+            notifyNewEpisodeOnce(n.anime_id, n.episode, n.title, n.cover);
           }
         } catch {
           notices = [];

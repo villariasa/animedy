@@ -4,6 +4,7 @@
   import History from "$lib/pages/History.svelte";
   import Favorites from "$lib/pages/Favorites.svelte";
   import MyList from "$lib/pages/MyList.svelte";
+  import Stats from "$lib/pages/Stats.svelte";
   import HeaderSearch from "$lib/components/HeaderSearch.svelte";
   import { likes } from "$lib/stores/likes.svelte";
   import { watchStatusStore } from "$lib/stores/watchStatus.svelte";
@@ -50,7 +51,7 @@
     </div>
 
     <!-- Header Search with instant suggest dropdown -->
-    <div class="flex-1 max-w-md mx-1 sm:mx-6 min-w-0 {isSearchActive ? 'max-w-none mx-0' : ''}">
+    <div class="{isSearchActive ? 'flex-1 max-w-none mx-0 w-full' : 'ml-auto sm:ml-0 sm:flex-1 sm:max-w-md sm:mx-6 sm:min-w-0 mr-1 sm:mr-0'}">
       <HeaderSearch bind:isSearchActive />
     </div>
 
@@ -103,6 +104,18 @@
       </a>
 
       <a
+        href="#/stats"
+        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'stats' ? 'bg-primary/10 text-primary font-medium' : ''}"
+        title="Stats"
+        aria-label="Stats"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 opacity-75 shrink-0">
+          <path d="M15.5 2A1.5 1.5 0 0 0 14 3.5v13a1.5 1.5 0 0 0 1.5 1.5h1a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 16.5 2h-1ZM9.5 6A1.5 1.5 0 0 0 8 7.5v9A1.5 1.5 0 0 0 9.5 18h1a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 10.5 6h-1ZM3.5 10A1.5 1.5 0 0 0 2 11.5v5A1.5 1.5 0 0 0 3.5 18h1A1.5 1.5 0 0 0 6 16.5v-5A1.5 1.5 0 0 0 4.5 10h-1Z" />
+        </svg>
+        <span class="hidden sm:inline">Stats</span>
+      </a>
+
+      <a
         href="#/settings"
         class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'settings' ? 'bg-primary/10 text-primary font-medium' : ''}"
         title="Settings"
@@ -116,7 +129,7 @@
     </nav>
   </header>
 
-  <main class="mx-auto w-full max-w-[1480px] flex-1 px-4 sm:px-6 py-8">
+  <main class="mx-auto w-full max-w-[1480px] sm:max-w-none flex-1 px-4 sm:px-0 py-8">
     {#if router.current.name === "home"}
       <Home />
     {:else if router.current.name === "anime"}
@@ -129,6 +142,8 @@
       <MyList />
     {:else if router.current.name === "history"}
       <History />
+    {:else if router.current.name === "stats"}
+      <Stats />
     {:else if router.current.name === "settings"}
       <Settings />
     {:else}

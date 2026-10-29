@@ -20,7 +20,8 @@ export interface WatchStatusEntry {
   updated_at: string;
 }
 
-const STORAGE_KEY = "animedy.watch_status";
+export const WATCH_STATUS_STORAGE_KEY = "animedy.watch_status";
+const STORAGE_KEY = WATCH_STATUS_STORAGE_KEY;
 
 export interface WatchStatusAction {
   /** The entry as it looked right before this action (for undo). */

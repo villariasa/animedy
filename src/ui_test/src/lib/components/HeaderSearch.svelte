@@ -4,6 +4,7 @@
   import { displayTitle } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { homeReset } from "$lib/stores/homeReset.svelte";
+  import { searchHistory } from "$lib/stores/searchHistory.svelte";
 
   let { isSearchActive = $bindable(false) }: { isSearchActive?: boolean } = $props();
 
@@ -17,12 +18,34 @@
   let activeIndex = $state(-1);
   let containerRef = $state<HTMLDivElement | null>(null);
   let inputRef = $state<HTMLInputElement | null>(null);
-
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  let isMobileExpanded = $state(false);
 
   $effect(() => {
-    isSearchActive = isFocused || isOpen || query.trim().length > 0;
+    isSearchActive = isMobileExpanded;
   });
+
+  function openMobileSearch(): void {
+    isMobileExpanded = true;
+    isSearchActive = true;
+    isFocused = true;
+    if (query.trim().length >= 2) {
+      isOpen = true;
+    }
+    setTimeout(() => {
+      inputRef?.focus();
+    }, 50);
+  }
+
+  const showRecentPanel = $derived(
+    isFocused && !isOpen && query.trim().length === 0 && searchHistory.items.length > 0
+  );
+
+  function searchFromHistory(q: string): void {
+    query = q;
+    searching = true;
+    void performSearch(q);
+  }
 
   let lastHomeResetToken = homeReset.token;
   $effect(() => {
@@ -48,6 +71,7 @@
 
   async function performSearch(q: string): Promise<void> {
     searching = true;
+    searchHistory.add(q);
     try {
       const items = await searchAnime(q);
       // Limit to top 7 most relevant suggestions for a clean dropdown
@@ -93,6 +117,8 @@
   function closeSearch(): void {
     isOpen = false;
     isFocused = false;
+    isMobileExpanded = false;
+    isSearchActive = false;
     activeIndex = -1;
     inputRef?.blur();
   }
@@ -123,7 +149,7 @@
       e.preventDefault();
       activeIndex = activeIndex > 0 ? activeIndex - 1 : results.length - 1;
     } else if (e.key === "Enter") {
-      const item = results[activeIndex];
+      const item = activeIndex >= 0 ? results[activeIndex] : results[0];
       if (item) {
         e.preventDefault();
         selectItem(item);
@@ -136,6 +162,10 @@
       if (containerRef && !containerRef.contains(event.target as Node)) {
         isOpen = false;
         isFocused = false;
+        if (query.trim().length === 0) {
+          isMobileExpanded = false;
+          isSearchActive = false;
+        }
       }
     }
     document.addEventListener("click", handleClickOutside);
@@ -147,15 +177,30 @@
   });
 </script>
 
-<div bind:this={containerRef} class="relative w-full">
-  <!-- Search Input Container -->
-  <div class="relative flex items-center">
+<div bind:this={containerRef} class="relative w-full flex items-center">
+  {#if !isSearchActive}
+    <!-- Mobile-only search trigger button (when collapsed) -->
+    <button
+      type="button"
+      class="flex h-8 w-8 sm:hidden items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-95 shrink-0"
+      onclick={openMobileSearch}
+      title="Search anime"
+      aria-label="Search anime"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+      </svg>
+    </button>
+  {/if}
+
+  <!-- Search Input Container: on desktop always visible; on mobile only visible when isSearchActive -->
+  <div class="relative items-center min-w-0 {isSearchActive ? 'flex flex-1 w-full' : 'hidden sm:flex sm:flex-1 w-full'}">
     <!-- Back arrow button visible on mobile when search is expanded -->
     {#if isSearchActive}
       <button
         type="button"
         onclick={closeSearch}
-        class="mr-1.5 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:hidden shrink-0"
+        class="mr-2 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:hidden shrink-0 active:scale-90"
         aria-label="Back / Close search"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
@@ -193,7 +238,7 @@
         id="header-search-input"
         role="combobox"
         aria-label="Search anime"
-        aria-expanded={isOpen}
+        aria-expanded={isOpen || showRecentPanel}
         aria-controls="header-search-listbox"
         aria-haspopup="listbox"
       />
@@ -213,8 +258,8 @@
     </div>
   </div>
 
-  <!-- Suggestion Dropdown Menu -->
-  {#if isOpen}
+  <!-- Suggestion Dropdown Menu / Recent Searches -->
+  {#if isOpen || showRecentPanel}
     <!-- Mobile backdrop for easy dismissal -->
     <button
       type="button"
@@ -229,7 +274,44 @@
       class="fixed inset-x-2 top-[54px] sm:absolute sm:inset-x-0 sm:top-full z-50 mt-1 sm:mt-1.5 max-h-[calc(100dvh-70px)] sm:max-h-[460px] overflow-y-auto rounded-xl border border-border/80 bg-card/98 p-1.5 shadow-2xl backdrop-blur-xl transition-all animate-in fade-in zoom-in-95 duration-100"
       role="listbox"
     >
-      {#if searching && results.length === 0}
+      {#if showRecentPanel}
+        <div class="flex items-center justify-between px-2 py-1">
+          <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Recent Searches</span>
+          <button
+            type="button"
+            onclick={() => searchHistory.clear()}
+            class="text-[10px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Clear all
+          </button>
+        </div>
+        <ul class="flex flex-col gap-0.5">
+          {#each searchHistory.items as q (q)}
+            <li class="group flex items-center">
+              <button
+                type="button"
+                onclick={() => searchFromHistory(q)}
+                class="flex flex-1 items-center gap-2.5 rounded-lg p-2 text-left text-xs text-foreground transition-colors hover:bg-accent/80"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 0 0 1.06-1.06l-2.78-2.78V5Z" clip-rule="evenodd" />
+                </svg>
+                <span class="truncate">{q}</span>
+              </button>
+              <button
+                type="button"
+                onclick={() => searchHistory.remove(q)}
+                class="mr-1 shrink-0 rounded-full p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                aria-label="Remove from recent searches"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
+                  <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                </svg>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {:else if searching && results.length === 0}
         <div class="flex items-center justify-center py-6 text-xs text-muted-foreground">
           <svg class="mr-2 h-4 w-4 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

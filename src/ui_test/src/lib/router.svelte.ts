@@ -10,6 +10,7 @@ export type Route =
   | { name: "history" }
   | { name: "favorites" }
   | { name: "mylist" }
+  | { name: "stats" }
   | { name: "settings" }
   | { name: "notfound" };
 
@@ -30,6 +31,8 @@ function parseHash(hash: string): Route {
     route = { name: "favorites" };
   } else if (path === "/mylist") {
     route = { name: "mylist" };
+  } else if (path === "/stats") {
+    route = { name: "stats" };
   } else if (path === "/settings") {
     route = { name: "settings" };
   }

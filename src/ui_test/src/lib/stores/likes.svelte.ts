@@ -8,7 +8,8 @@ export interface LikedAnime {
   liked_at: string;
 }
 
-const STORAGE_KEY = "animedy.liked_animes";
+export const LIKES_STORAGE_KEY = "animedy.liked_animes";
+const STORAGE_KEY = LIKES_STORAGE_KEY;
 
 export interface LikeAction {
   type: "liked" | "unliked";

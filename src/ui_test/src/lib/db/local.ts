@@ -81,6 +81,10 @@ export async function clearLocalProgress(): Promise<void> {
   await (await db()).clear("progress");
 }
 
+export async function deleteLocalProgress(episodeId: number): Promise<void> {
+  await (await db()).delete("progress", episodeId);
+}
+
 export async function getLocalSettings(): Promise<SettingsPayload | undefined> {
   return (await db()).get("settings", SETTINGS_KEY);
 }
