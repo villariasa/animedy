@@ -66,13 +66,37 @@ interface AniListMedia {
   relations?: { edges: Array<{ relationType: string; node: AniListMedia }> };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function gql<T>(key: string, query: string, variables: Record<string, unknown>): Promise<T> {
   try {
-    const res = await fetch(ANILIST_URL, {
+    let res = await fetch(ANILIST_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ query, variables })
     });
+    // AniList rate-limits (429) and publishes how long to wait via Retry-After.
+    // Worth one short automatic retry so a brief burst doesn't surface as an
+    // error; a long cooldown just fails fast with an accurate message instead
+    // of hanging the UI.
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get("Retry-After"));
+      if (Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 5) {
+        await sleep(retryAfter * 1000);
+        res = await fetch(ANILIST_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ query, variables })
+        });
+      } else {
+        throw new ApiError(
+          `AniList is rate-limiting requests — try again in ${Number.isFinite(retryAfter) ? retryAfter : 60}s.`,
+          429
+        );
+      }
+    }
     if (!res.ok) {
       throw new ApiError(`AniList request failed (${res.status})`, res.status);
     }
@@ -80,7 +104,7 @@ async function gql<T>(key: string, query: string, variables: Record<string, unkn
     await putCached(key, json.data).catch(() => undefined);
     return json.data;
   } catch (err) {
-    // Offline / rate-limited → serve the last cached copy if we have one.
+    // Offline → serve the last cached copy if we have one.
     const cached = await getCached<T>(key).catch(() => undefined);
     if (cached !== undefined) {
       return cached;
@@ -323,6 +347,32 @@ export async function browseAnime(tag: BrowseTag, page = 1, filters?: BrowseFilt
 /** Back-compat helper for callers that only need the items (rankings rail). */
 export async function browseAnimeItems(tag: BrowseTag, page = 1): Promise<AnimeSearchResultItem[]> {
   return (await browseAnime(tag, page)).items;
+}
+
+/**
+ * Hero Spotlight feed — ranking-based, not a recommendation algorithm.
+ * AniList's "trending" ranking (TRENDING_DESC, real-time community activity —
+ * the same external ranking "Popular Today" already surfaces) is the sole
+ * source of truth: entries are returned in that exact order. We walk deeper
+ * pages of the SAME trending ranking (never a different ranking like
+ * popularity/score) only to skip entries AniList has no banner art for,
+ * since the Spotlight UI requires one — ranked anime are never reordered or
+ * swapped for an unrelated pick.
+ */
+export async function getTrendingSpotlight(count: number): Promise<AnimeSearchResultItem[]> {
+  const items: AnimeSearchResultItem[] = [];
+  let page = 1;
+  const maxPages = 3; // trending is a deep list; this is far more than enough headroom
+  while (items.length < count && page <= maxPages) {
+    const pageResult = await browseAnime("trending", page);
+    for (const item of pageResult.items) {
+      if (item.banner_image) items.push(item);
+      if (items.length >= count) break;
+    }
+    if (!pageResult.hasNextPage) break;
+    page += 1;
+  }
+  return items.slice(0, count);
 }
 
 async function fetchMedia(id: number, withRelations: boolean): Promise<AniListMedia> {
@@ -577,6 +627,113 @@ export async function getTodayReleases(): Promise<TodayRelease[]> {
     }
   }
   return [...byAnime.values()].sort((x, y) => y.airingAt - x.airingAt);
+}
+
+export const LATEST_RELEASE_PAGE_SIZE = 25;
+// Raw AniList airingSchedules fetched per page before per-anime dedup/filtering —
+// a buffer well above LATEST_RELEASE_PAGE_SIZE since multiple episodes can land
+// close together and several belong to the same anime.
+const LATEST_RELEASE_FETCH_SIZE = 50;
+
+export interface LatestReleasePage extends BrowsePage {
+  /** Raw AniList airingSchedules page cursor to resume from for the next UI page. */
+  nextRawPage: number;
+}
+
+// Safety cap on raw AniList pages pulled per UI page — only kicks in when
+// aggressive filters or heavy duplicate-episode clustering would otherwise
+// require unbounded fetching to fill a page.
+const LATEST_RELEASE_MAX_RAW_FETCHES = 6;
+
+/**
+ * Anime with the most recently AIRED episode first — this is the actual
+ * recency signal (airingSchedules.airingAt), not AniList's `updatedAt`
+ * (that field tracks when the catalogue entry's metadata was last edited by
+ * moderators, which has nothing to do with new episodes and is why sorting
+ * by it previously surfaced stale/old anime).
+ *
+ * `anchorAt` pins the "now" boundary for the whole paging session so later
+ * pages continue chronologically right where the previous one left off
+ * instead of sliding forward in time on every request — call site should
+ * compute it once (e.g. on tab load) and reuse it for subsequent requests.
+ *
+ * `excludeIds` is the set of anime ids already shown on an earlier UI page
+ * this session — an anime's airing history can span several raw AniList
+ * pages (one schedule entry per episode), so without this an older episode
+ * of a show already shown with its newer episode could resurface on a later
+ * page. Callers should accumulate every returned item's `anime_id` into this
+ * set and pass it back in on the next call. `rawPage` is AniList's own page
+ * cursor into airingSchedules — pass 1 for a fresh session, then whatever
+ * `nextRawPage` the previous call returned to continue forward.
+ */
+export async function getLatestReleases(
+  rawPage: number,
+  anchorAt: number,
+  excludeIds: Set<number>,
+  filters?: BrowseFilters
+): Promise<LatestReleasePage> {
+  const filterKey = `${filters?.genre ?? ""}:${filters?.year ?? ""}:${filters?.format ?? ""}`;
+  const collected: Array<{ item: AnimeSearchResultItem; airingAt: number }> = [];
+  const collectedIds = new Set<number>();
+  let page = rawPage;
+  let hasNextRaw = true;
+  let fetches = 0;
+
+  while (collected.length < LATEST_RELEASE_PAGE_SIZE && hasNextRaw && fetches < LATEST_RELEASE_MAX_RAW_FETCHES) {
+    const data = await gql<{
+      Page: {
+        pageInfo: { hasNextPage: boolean };
+        airingSchedules: Array<{ episode: number; airingAt: number; media: AniListMedia }>;
+      };
+    }>(
+      `anilist:latest:v2:${anchorAt}:p${page}`,
+      `query ($anchor: Int, $page: Int) {
+        Page(page: $page, perPage: ${LATEST_RELEASE_FETCH_SIZE}) {
+          pageInfo { hasNextPage }
+          airingSchedules(airingAt_lesser: $anchor, sort: TIME_DESC) {
+            episode
+            airingAt
+            media { ${MEDIA_FIELDS} }
+          }
+        }
+      }`,
+      { anchor: anchorAt, page }
+    );
+    fetches += 1;
+    page += 1;
+    hasNextRaw = data.Page.pageInfo.hasNextPage;
+
+    // One entry per anime within this batch — keep whichever episode aired
+    // most recently (a show can have more than one schedule entry here).
+    const byAnime = new Map<number, { item: AnimeSearchResultItem; airingAt: number }>();
+    for (const s of data.Page.airingSchedules) {
+      const m = s.media;
+      if (m.countryOfOrigin !== "JP" || m.isAdult || m.format === "MUSIC") continue;
+      if (excludeIds.has(m.id) || collectedIds.has(m.id)) continue;
+      const existing = byAnime.get(m.id);
+      if (!existing || s.airingAt > existing.airingAt) {
+        byAnime.set(m.id, { item: toSearchItem(m), airingAt: s.airingAt });
+      }
+    }
+
+    let batch = [...byAnime.values()];
+    if (filters?.genre) batch = batch.filter((e) => e.item.genres?.includes(filters.genre as string));
+    if (filters?.year) batch = batch.filter((e) => e.item.season_year === filters.year);
+    if (filters?.format) batch = batch.filter((e) => e.item.format === filters.format);
+    batch.sort((a, b) => b.airingAt - a.airingAt);
+
+    for (const e of batch) {
+      if (collected.length >= LATEST_RELEASE_PAGE_SIZE) break;
+      collected.push(e);
+      collectedIds.add(e.item.anime_id);
+    }
+  }
+
+  return {
+    items: collected.map((e) => e.item),
+    hasNextPage: hasNextRaw,
+    nextRawPage: page
+  };
 }
 
 export interface AiringScheduleEntry {

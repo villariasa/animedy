@@ -3,10 +3,10 @@
   import {
     browseAnime,
     searchAnime,
-    getTodayReleases,
+    getLatestReleases,
+    getTrendingSpotlight,
     ANILIST_GENRES,
-    type BrowseTag,
-    type TodayRelease
+    type BrowseTag
   } from "$lib/api/anilist";
   import type { AnimeFormat, AnimeSearchResultItem, ContinueWatchingItem } from "$lib/api/types";
   import ContinueWatchingCard from "$lib/components/ContinueWatchingCard.svelte";
@@ -22,7 +22,7 @@
   import { searchHistory } from "$lib/stores/searchHistory.svelte";
   import HoverSelect, { type SelectOption } from "$lib/components/HoverSelect.svelte";
 
-  type MainCuratedTab = "trending" | "today" | "new_releases";
+  type MainCuratedTab = "latest_release" | "trending";
   type RankingTab = "top_rated" | "trending" | "this_week" | "this_month";
 
   const SEARCH_DEBOUNCE_MS = 400;
@@ -35,14 +35,28 @@
   let railError = $state<string | null>(null);
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // Main grid tab (Trending / Popular)
-  let activeTab = $state<MainCuratedTab>("trending");
+  // Main grid tab — Latest Release (animepahe-style) is the default landing tab.
+  let activeTab = $state<MainCuratedTab>("latest_release");
   let curatedItems = $state<AnimeSearchResultItem[]>([]);
   let curatedLoading = $state(false);
   let curatedError = $state<string | null>(null);
   let curatedPage = $state(1);
   let curatedHasMore = $state(false);
   let loadingMore = $state(false);
+  // Pins the "now" boundary for a Latest Release paging session so page 2+
+  // continues chronologically from page 1 instead of drifting forward in time.
+  let latestReleaseAnchorAt = $state(0);
+  // Raw AniList airingSchedules page cursor to resume from on the next forward fetch.
+  let latestReleaseRawPage = $state(1);
+  // Anime ids already shown on an earlier UI page this session — a show's
+  // older episodes live on later raw pages, so without this it can resurface
+  // with a stale episode after already appearing with its newest one.
+  let latestReleaseSeenIds = $state<Set<number>>(new Set());
+  // Already-fetched UI pages, so Prev/Next within range is instant and never
+  // re-derives a page (which could otherwise shuffle/duplicate results).
+  let latestReleasePagesCache = $state<Map<number, AnimeSearchResultItem[]>>(new Map());
+  // Whether AniList still has more raw airingSchedules beyond the last page we fetched.
+  let latestReleaseHasMoreRaw = $state(false);
 
   // Discovery filters applied to the curated grid.
   const FORMAT_OPTIONS: AnimeFormat[] = ["TV", "MOVIE", "OVA", "ONA", "SPECIAL", "TV_SHORT", "MUSIC"];
@@ -70,37 +84,21 @@
     filterFormat = "";
   }
 
-  function matchesFilters(item: AnimeSearchResultItem): boolean {
-    if (filterGenre && !item.genres?.includes(filterGenre)) return false;
-    if (filterYear && item.season_year !== Number(filterYear)) return false;
-    if (filterFormat && item.format !== filterFormat) return false;
-    return true;
-  }
-
   const TAB_HEADERS: Record<MainCuratedTab, { title: string; subtitle: string }> = {
-    trending: { title: "Popular Today", subtitle: "Realtime rankings from AniList activity, updated continuously" },
-    today: { title: "Today Release", subtitle: "Episodes that aired today — realtime" },
-    new_releases: { title: "New Releases", subtitle: "Freshly premiered anime, newest first" }
+    latest_release: { title: "Latest Release", subtitle: "Anime with the most recently aired episode, newest first" },
+    trending: { title: "Popular Today", subtitle: "Realtime rankings from AniList activity, updated continuously" }
   };
 
-  let todayMeta = $state<Map<number, TodayRelease>>(new Map());
-
-  // Dedicated Ultra-HD Hero Spotlight items (always guaranteed panoramic banners)
+  // Dedicated Ultra-HD Hero Spotlight items — ranking-based (AniList trending
+  // ranking is the source of truth; order is preserved exactly as returned).
+  const SPOTLIGHT_COUNT = 8;
   let spotlightItems = $state<AnimeSearchResultItem[]>([]);
   let spotlightLoading = $state(false);
 
   async function loadSpotlight(): Promise<void> {
     spotlightLoading = true;
     try {
-      const pageResult = await browseAnime("trending");
-      const withBanners = pageResult.items.filter((i) => Boolean(i.banner_image));
-      if (withBanners.length >= 4) {
-        spotlightItems = withBanners.slice(0, 8);
-      } else {
-        const popular = await browseAnime("popular");
-        const popularWithBanners = popular.items.filter((i) => Boolean(i.banner_image));
-        spotlightItems = [...withBanners, ...popularWithBanners].slice(0, 8);
-      }
+      spotlightItems = await getTrendingSpotlight(SPOTLIGHT_COUNT);
     } catch {
       spotlightItems = [];
     } finally {
@@ -177,13 +175,9 @@
       lastHomeResetToken = homeReset.token;
       clearTimeout(debounceTimer);
       clearSearch();
-      activeTab = "trending";
+      activeTab = "latest_release";
     }
   });
-
-  function curatedTag(tab: MainCuratedTab): BrowseTag {
-    return tab === "today" ? "trending" : tab;
-  }
 
   function activeFilters() {
     return {
@@ -198,19 +192,24 @@
     curatedError = null;
     curatedPage = 1;
     try {
-      if (tab === "today") {
-        // "Today" has no dedicated filtered query — apply filters client-side.
-        const releases = await getTodayReleases();
-        todayMeta = new Map(releases.map((r) => [r.item.anime_id, r]));
-        curatedItems = releases.map((r) => r.item).filter(matchesFilters);
-        curatedHasMore = false;
+      if (tab === "latest_release") {
+        // Fresh paging session — reset the anchor, seen-id tracking, and page cache
+        // so a tab switch never carries over stale state from a previous visit.
+        latestReleaseAnchorAt = Math.floor(Date.now() / 1000);
+        latestReleaseSeenIds = new Set();
+        latestReleasePagesCache = new Map();
+        const pageResult = await getLatestReleases(1, latestReleaseAnchorAt, latestReleaseSeenIds, activeFilters());
+        curatedItems = pageResult.items;
+        for (const item of pageResult.items) latestReleaseSeenIds.add(item.anime_id);
+        latestReleasePagesCache.set(1, pageResult.items);
+        latestReleaseRawPage = pageResult.nextRawPage;
+        latestReleaseHasMoreRaw = pageResult.hasNextPage;
+        curatedHasMore = pageResult.hasNextPage;
         return;
       }
-      const pageResult = await browseAnime(curatedTag(tab), 1, activeFilters());
+      const pageResult = await browseAnime(tab as BrowseTag, 1, activeFilters());
       curatedItems = pageResult.items;
-      // AniList reports whether more pages exist — reliable no matter how many
-      // entries the client-side filters drop from this page.
-      curatedHasMore = tab === "new_releases" && pageResult.hasNextPage;
+      curatedHasMore = false;
     } catch (err) {
       curatedError = err instanceof ApiError ? err.message : "Failed to load curated anime.";
     } finally {
@@ -218,17 +217,39 @@
     }
   }
 
-  async function loadMoreCurated(): Promise<void> {
+  // "Latest Release" uses true prev/next pagination (animepahe-style), replacing
+  // the grid instead of appending to it. Going back to an already-fetched page
+  // is instant and reuses the cached result — an anime already shown on an
+  // earlier page never resurfaces, since forward fetches exclude every id
+  // already seen this session.
+  async function goToCuratedPage(pageNum: number): Promise<void> {
+    if (pageNum < 1 || loadingMore) return;
+    const cached = latestReleasePagesCache.get(pageNum);
+    if (cached) {
+      curatedItems = cached;
+      curatedPage = pageNum;
+      // More pages exist if a later one is already cached, or we haven't
+      // exhausted AniList's raw feed yet.
+      curatedHasMore = latestReleasePagesCache.has(pageNum + 1) || latestReleaseHasMoreRaw;
+      return;
+    }
     loadingMore = true;
     try {
-      const pageResult = await browseAnime(curatedTag(activeTab), curatedPage + 1, activeFilters());
-      curatedPage += 1;
-      // Dedup in case rankings shifted between pages.
-      const seen = new Set(curatedItems.map((i) => i.anime_id));
-      curatedItems = [...curatedItems, ...pageResult.items.filter((i) => !seen.has(i.anime_id))];
+      const pageResult = await getLatestReleases(
+        latestReleaseRawPage,
+        latestReleaseAnchorAt,
+        latestReleaseSeenIds,
+        activeFilters()
+      );
+      for (const item of pageResult.items) latestReleaseSeenIds.add(item.anime_id);
+      latestReleasePagesCache.set(pageNum, pageResult.items);
+      latestReleaseRawPage = pageResult.nextRawPage;
+      latestReleaseHasMoreRaw = pageResult.hasNextPage;
+      curatedItems = pageResult.items;
+      curatedPage = pageNum;
       curatedHasMore = pageResult.hasNextPage;
-    } catch {
-      curatedHasMore = false;
+    } catch (err) {
+      curatedError = err instanceof ApiError ? err.message : "Failed to load page.";
     } finally {
       loadingMore = false;
     }
@@ -496,6 +517,29 @@
           <div class="flex items-center gap-2 overflow-x-auto pb-1.5 sm:pb-0 scrollbar-none rounded-2xl border border-border/80 bg-card/90 p-1.5 shadow-lg backdrop-blur-xl">
             <button
               type="button"
+              class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap {activeTab === 'latest_release'
+                ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/40 font-bold'
+                : 'bg-background/90 text-foreground border border-border/80 hover:border-primary/50 hover:bg-accent hover:text-primary shadow-sm'}"
+              onclick={() => { activeTab = "latest_release"; query = ""; }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="h-4 w-4 shrink-0 {activeTab === 'latest_release' ? 'text-primary-foreground' : 'text-sky-400'}"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 0 0 1.06-1.06l-2.78-2.78V5Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              <span>Latest Release</span>
+            </button>
+
+            <button
+              type="button"
               class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap {activeTab === 'trending'
                 ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/40 font-bold'
                 : 'bg-background/90 text-foreground border border-border/80 hover:border-primary/50 hover:bg-accent hover:text-primary shadow-sm'}"
@@ -515,55 +559,6 @@
                 />
               </svg>
               <span>Popular Today</span>
-            </button>
-
-            <button
-              type="button"
-              class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap {activeTab === 'today'
-                ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/40 font-bold'
-                : 'bg-background/90 text-foreground border border-border/80 hover:border-primary/50 hover:bg-accent hover:text-primary shadow-sm'}"
-              onclick={() => { activeTab = "today"; query = ""; }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                class="h-4 w-4 shrink-0 {activeTab === 'today' ? 'text-primary-foreground' : 'text-sky-400'}"
-                aria-hidden="true"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 0 0 1.06-1.06l-2.78-2.78V5Z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-              <span>Today Release</span>
-              <span class="inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-extrabold {activeTab === 'today' ? 'bg-white/20 text-white' : 'bg-sky-500/20 text-sky-400'}">
-                LIVE
-              </span>
-            </button>
-
-            <button
-              type="button"
-              class="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap {activeTab === 'new_releases'
-                ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 ring-1 ring-primary/40 font-bold'
-                : 'bg-background/90 text-foreground border border-border/80 hover:border-primary/50 hover:bg-accent hover:text-primary shadow-sm'}"
-              onclick={() => { activeTab = "new_releases"; query = ""; }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                class="h-4 w-4 shrink-0 {activeTab === 'new_releases' ? 'text-primary-foreground' : 'text-emerald-400'}"
-                aria-hidden="true"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-              <span>New Releases</span>
             </button>
           </div>
         </div>
@@ -640,25 +635,20 @@
                       />
                     {/if}
 
-                    <!-- Rank badge -->
-                    {#if activeTab === 'today'}
-                      {@const rel = todayMeta.get(item.anime_id)}
-                      <span class="absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-black tracking-wide shadow-md backdrop-blur {rel?.tag === 'new_anime' ? 'bg-green-400 text-green-950' : rel?.tag === 'new_season' ? 'bg-amber-400 text-amber-950' : 'bg-primary text-primary-foreground'}">
-                        {rel?.tag === 'new_anime' ? 'NEW ANIME' : rel?.tag === 'new_season' ? 'NEW SEASON' : 'NEW EPISODE'}
-                      </span>
-                    {:else}
+                    <!-- Rank badge (animepahe's Latest Release feed has no rank ribbon — title + episode count only) -->
+                    {#if activeTab !== 'latest_release'}
                       <span
                         class="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold shadow-md backdrop-blur {
-                          activeTab !== 'new_releases' && index === 0
+                          index === 0
                             ? 'bg-amber-400 text-amber-950 ring-2 ring-amber-200'
-                            : activeTab !== 'new_releases' && index === 1
+                            : index === 1
                             ? 'bg-slate-200 text-slate-900 ring-2 ring-slate-100'
-                            : activeTab !== 'new_releases' && index === 2
+                            : index === 2
                             ? 'bg-amber-700 text-amber-100 ring-2 ring-amber-600'
                             : 'bg-black/75 text-white'
                         }"
                       >
-                        {activeTab === 'new_releases' ? 'NEW' : `#${index + 1}`}
+                        #{index + 1}
                       </span>
                     {/if}
 
@@ -725,20 +715,37 @@
             {/each}
           </ul>
 
-          {#if activeTab === "new_releases" && curatedHasMore}
-            <div class="mt-6 text-center">
+          {#if activeTab === "latest_release"}
+            <!-- animepahe-style prev/next pager -->
+            <div class="mt-6 flex items-center justify-center gap-2">
               <button
                 type="button"
-                disabled={loadingMore}
-                class="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 px-5 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
-                onclick={() => void loadMoreCurated()}
+                disabled={curatedPage <= 1 || loadingMore}
+                class="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card/60 text-sm font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+                onclick={() => void goToCuratedPage(curatedPage - 1)}
+                aria-label="Previous page"
               >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z" clip-rule="evenodd" />
+                </svg>
+              </button>
+              <span class="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground shadow-sm">
                 {#if loadingMore}
-                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></span>
-                  Loading…
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"></span>
                 {:else}
-                  Load More
+                  {curatedPage}
                 {/if}
+              </span>
+              <button
+                type="button"
+                disabled={!curatedHasMore || loadingMore}
+                class="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card/60 text-sm font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+                onclick={() => void goToCuratedPage(curatedPage + 1)}
+                aria-label="Next page"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd" />
+                </svg>
               </button>
             </div>
           {/if}

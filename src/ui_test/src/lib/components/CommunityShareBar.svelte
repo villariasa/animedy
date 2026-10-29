@@ -40,16 +40,8 @@
   <div class="relative flex flex-col md:flex-row items-center justify-between gap-4">
     <!-- Left: Mascot / Heart Icon + Love This Site Message -->
     <div class="flex items-center gap-3.5">
-      <!-- Animated Heart Mascot Badge -->
-      <div class="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500/20 to-primary/20 border border-rose-500/30 shadow-inner">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-6 w-6 text-rose-500 animate-pulse">
-          <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
-        </svg>
-        <span class="absolute -top-1 -right-1 flex h-3 w-3">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-        </span>
-      </div>
+      <!-- Animated Love Mascot -->
+      <img src="/icons/love.gif" alt="" class="h-24 w-24 shrink-0 rounded-full object-cover" aria-hidden="true" />
 
       <div class="flex flex-col">
         <div class="flex items-center gap-2">
