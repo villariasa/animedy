@@ -115,7 +115,7 @@
   </label>
 {/snippet}
 
-<div class="flex flex-col gap-6 max-w-2xl">
+<div class="mx-auto flex w-full max-w-2xl flex-col gap-6">
   <!-- Header -->
   <div class="flex items-center gap-3.5 border-b border-border/80 pb-5">
     <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-purple-600 text-primary-foreground shadow-lg shadow-primary/25 ring-2 ring-primary/30">
