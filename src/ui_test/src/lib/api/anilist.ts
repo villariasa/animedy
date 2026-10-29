@@ -109,7 +109,13 @@ async function gql<T>(key: string, query: string, variables: Record<string, unkn
     if (cached !== undefined) {
       return cached;
     }
-    throw err instanceof ApiError ? err : new ApiError("Network error — check your connection.", 0);
+    if (err instanceof ApiError) throw err;
+    // Surface what the browser's fetch actually failed with (e.g. "Failed to
+    // fetch", a TypeError name, a CORS/mixed-content message) instead of a
+    // blanket message that hides whether this is a real outage, a blocked
+    // request, or something else entirely.
+    const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    throw new ApiError(`Network error — check your connection. (${detail})`, 0);
   }
 }
 
