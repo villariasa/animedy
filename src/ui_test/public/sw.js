@@ -1,8 +1,18 @@
 /* Animedy service worker — offline app-shell caching.
  * API responses are POST-only and are NOT cached here; offline data
  * lives in the IndexedDB layer (T5.7). */
-const CACHE_NAME = "animedy-shell-v1";
-const SHELL_URLS = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-maskable.svg"];
+const CACHE_NAME = "animedy-shell-v2";
+const SHELL_URLS = [
+  "/",
+  "/manifest.webmanifest",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/tab-icon.png",
+  "/icons/icon-maskable-192.png",
+  "/icons/icon-maskable-512.png",
+  "/icons/icon.svg",
+  "/icons/icon-maskable.svg"
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
