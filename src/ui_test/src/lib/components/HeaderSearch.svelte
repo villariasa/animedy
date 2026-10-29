@@ -19,14 +19,9 @@
   let containerRef = $state<HTMLDivElement | null>(null);
   let inputRef = $state<HTMLInputElement | null>(null);
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  let isMobileExpanded = $state(false);
 
-  $effect(() => {
-    isSearchActive = isMobileExpanded;
-  });
-
-  function openMobileSearch(): void {
-    isMobileExpanded = true;
+  function openMobileSearch(e?: Event): void {
+    e?.stopPropagation();
     isSearchActive = true;
     isFocused = true;
     if (query.trim().length >= 2) {
@@ -34,7 +29,7 @@
     }
     setTimeout(() => {
       inputRef?.focus();
-    }, 50);
+    }, 40);
   }
 
   const showRecentPanel = $derived(
@@ -114,10 +109,10 @@
     inputRef?.focus();
   }
 
-  function closeSearch(): void {
+  function closeSearch(e?: Event): void {
+    e?.stopPropagation();
     isOpen = false;
     isFocused = false;
-    isMobileExpanded = false;
     isSearchActive = false;
     activeIndex = -1;
     inputRef?.blur();
@@ -159,14 +154,15 @@
 
   $effect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent): void {
-      if (containerRef && !containerRef.contains(event.target as Node)) {
-        isOpen = false;
-        isFocused = false;
-        if (query.trim().length === 0) {
-          isMobileExpanded = false;
-          isSearchActive = false;
-        }
+      if (!isSearchActive && !isOpen && !isFocused) return;
+      const path = event.composedPath ? event.composedPath() : [];
+      if (containerRef && (containerRef.contains(event.target as Node) || path.includes(containerRef))) {
+        return;
       }
+      isOpen = false;
+      isFocused = false;
+      isSearchActive = false;
+      activeIndex = -1;
     }
     document.addEventListener("click", handleClickOutside);
     document.addEventListener("touchstart", handleClickOutside, { passive: true });
@@ -178,20 +174,18 @@
 </script>
 
 <div bind:this={containerRef} class="relative w-full flex items-center">
-  {#if !isSearchActive}
-    <!-- Mobile-only search trigger button (when collapsed) -->
-    <button
-      type="button"
-      class="flex h-8 w-8 sm:hidden items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-95 shrink-0"
-      onclick={openMobileSearch}
-      title="Search anime"
-      aria-label="Search anime"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
-        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-      </svg>
-    </button>
-  {/if}
+  <!-- Mobile-only search trigger button (when collapsed) -->
+  <button
+    type="button"
+    class="flex h-8 w-8 sm:hidden items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-95 shrink-0 {isSearchActive ? 'hidden' : ''}"
+    onclick={(e) => openMobileSearch(e)}
+    title="Search anime"
+    aria-label="Search anime"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4 pointer-events-none">
+      <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </svg>
+  </button>
 
   <!-- Search Input Container: on desktop always visible; on mobile only visible when isSearchActive -->
   <div class="relative items-center min-w-0 {isSearchActive ? 'flex flex-1 w-full' : 'hidden sm:flex sm:flex-1 w-full'}">
@@ -199,11 +193,11 @@
     {#if isSearchActive}
       <button
         type="button"
-        onclick={closeSearch}
+        onclick={(e) => closeSearch(e)}
         class="mr-2 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:hidden shrink-0 active:scale-90"
         aria-label="Back / Close search"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 pointer-events-none">
           <path fill-rule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clip-rule="evenodd" />
         </svg>
       </button>
@@ -258,13 +252,24 @@
     </div>
   </div>
 
+  {#if isSearchActive && !isOpen && !showRecentPanel}
+    <!-- Mobile backdrop to close search when tapping outside header -->
+    <button
+      type="button"
+      class="fixed inset-0 top-14 z-30 bg-black/40 backdrop-blur-[1px] sm:hidden"
+      onclick={(e) => closeSearch(e)}
+      tabindex="-1"
+      aria-label="Close search"
+    ></button>
+  {/if}
+
   <!-- Suggestion Dropdown Menu / Recent Searches -->
   {#if isOpen || showRecentPanel}
     <!-- Mobile backdrop for easy dismissal -->
     <button
       type="button"
       class="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] sm:hidden"
-      onclick={closeSearch}
+      onclick={(e) => closeSearch(e)}
       tabindex="-1"
       aria-label="Dismiss search results"
     ></button>

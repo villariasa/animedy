@@ -14,10 +14,12 @@
   import UndoSnackbar from "$lib/components/UndoSnackbar.svelte";
   import NewEpisodeNotifier from "$lib/components/NewEpisodeNotifier.svelte";
   import AmbientBackground from "$lib/components/AmbientBackground.svelte";
+  import MobileNavDrawer from "$lib/components/MobileNavDrawer.svelte";
   import { router } from "$lib/router.svelte";
   import { homeReset } from "$lib/stores/homeReset.svelte";
 
   let isSearchActive = $state(false);
+  let isMobileMenuOpen = $state(false);
 
   function goHome(): void {
     router.go("/");
@@ -27,17 +29,19 @@
 
 <div class="dark flex min-h-dvh flex-col bg-background text-foreground">
   <AmbientBackground />
+  <MobileNavDrawer bind:isOpen={isMobileMenuOpen} />
   <header class="sticky top-0 z-40 flex items-center justify-between gap-2 sm:gap-4 border-b border-border/80 bg-background/95 px-3 sm:px-6 py-2.5 backdrop-blur-md">
     <!-- Logo & Home icon (hidden on mobile when search is actively expanded) -->
     <div class="items-center gap-1.5 sm:gap-2 shrink-0 {isSearchActive ? 'hidden sm:flex' : 'flex'}">
+      <!-- Desktop-only Home icon -->
       <a
         href="#/"
         onclick={(e) => { e.preventDefault(); goHome(); }}
-        class="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-primary active:scale-95 {router.current.name === 'home' ? 'bg-primary/10 text-primary' : ''}"
+        class="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-primary active:scale-95 {router.current.name === 'home' ? 'bg-primary/10 text-primary' : ''}"
         title="Home"
         aria-label="Home"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 sm:h-5 sm:w-5">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5">
           <path fill-rule="evenodd" d="M9.293 2.293a1 1 0 0 1 1.414 0l7 7A1 1 0 0 1 17 11h-1v6a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6H3a1 1 0 0 1-.707-1.707l7-7Z" clip-rule="evenodd" />
         </svg>
       </a>
@@ -55,8 +59,23 @@
       <HeaderSearch bind:isSearchActive />
     </div>
 
-    <!-- Main Navigation (hidden on mobile when search is actively expanded) -->
-    <nav class="items-center gap-0.5 sm:gap-1 text-sm shrink-0 {isSearchActive ? 'hidden sm:flex' : 'flex'}" aria-label="Main">
+    <!-- Mobile-only Hamburger Menu Button (placed on the right) -->
+    {#if !isSearchActive}
+      <button
+        type="button"
+        onclick={() => (isMobileMenuOpen = true)}
+        class="flex h-8 w-8 sm:hidden items-center justify-center rounded-lg bg-card/80 border border-border/70 text-foreground shadow-sm transition-all hover:bg-accent active:scale-95 shrink-0"
+        title="Open navigation menu"
+        aria-label="Open navigation menu"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-4 w-4">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+      </button>
+    {/if}
+
+    <!-- Main Navigation (desktop only; on mobile these are in the mobile menu drawer) -->
+    <nav class="hidden sm:flex items-center gap-0.5 sm:gap-1 text-sm shrink-0" aria-label="Main">
       <a
         href="#/favorites"
         class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'favorites' ? 'bg-primary/10 text-primary font-medium' : ''}"
