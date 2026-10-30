@@ -48,7 +48,7 @@
           maxWatched[row.anime_id] = ep;
         }
       }
-      const fresh = releases
+      const candidates = releases
         .filter((r) => trackedIds.has(r.item.anime_id) && (maxWatched[r.item.anime_id] ?? 0) < r.episode)
         .slice(0, 4)
         .map((r) => ({
@@ -57,22 +57,29 @@
           title: displayTitle(r.item.title_english, r.item.title_romaji),
           cover: r.item.cover_image
         }));
+
+      // Dedup against the notification history log — without this, every
+      // reload recomputes "aired today + unwatched" from scratch and the
+      // toast/notification fires again even though it already surfaced.
+      const seenIds = new Set(notificationHistory.items.map((e) => e.id));
+      const fresh = candidates.filter((n) => !seenIds.has(`episode:${n.anime_id}:${n.episode}`));
+
       if (fresh.length > 0) {
         notices = fresh;
         setTimeout(() => (notices = []), 12_000);
       }
-      if (settings.current.notify_episode_updates) {
-        for (const n of fresh) {
+      for (const n of fresh) {
+        notificationHistory.add({
+          id: `episode:${n.anime_id}:${n.episode}`,
+          type: "episode",
+          anime_id: n.anime_id,
+          title: n.title,
+          message: `Episode ${n.episode} just released`,
+          cover: n.cover,
+          created_at: new Date().toISOString()
+        });
+        if (settings.current.notify_episode_updates) {
           notifyNewEpisodeOnce(n.anime_id, n.episode, n.title, n.cover);
-          notificationHistory.add({
-            id: `episode:${n.anime_id}:${n.episode}`,
-            type: "episode",
-            anime_id: n.anime_id,
-            title: n.title,
-            message: `Episode ${n.episode} just released`,
-            cover: n.cover,
-            created_at: new Date().toISOString()
-          });
         }
       }
     } catch {
