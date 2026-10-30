@@ -252,77 +252,145 @@ All endpoints strictly use **POST** requests with JSON bodies (accepting `{}` wh
 
 ## <img src="icons/rocket-launch.svg" width="22" height="22" align="center" /> Getting Started
 
-### Prerequisites
-- **Node.js:** v20+ / v22+
-- **MariaDB / MySQL:** v10.5+ / v8.0+
-- **npm** or **pnpm**
+### 📋 Prerequisites
+Before starting, ensure your machine has:
+- **Git:** [Download Git](https://git-scm.com/) (`git --version`)
+- **Node.js:** v18, v20, or v22+ [Download Node.js](https://nodejs.org/) (`node -v`)
+- **npm:** Included with Node.js (`npm -v`)
+- *(Optional)* **MariaDB / MySQL:** Only needed if you plan to run local user auth & database caching (`v10.5+` / `v8.0+`). The frontend video streaming and AniList features work out-of-the-box without a database.
 
-### ⚡ Quick Start (One-Click Setup)
-Run the automated setup script to install all dependencies (backend + frontend), copy `.env`, and verify your installation in one command:
+---
 
-**Linux / macOS / WSL / Git Bash:**
+### 📥 Step 1: Clone the Repository
+
+Open your terminal (or Command Prompt / PowerShell) and clone the repository:
+
 ```bash
 git clone https://github.com/villariasa/animedy.git
 cd animedy
-./setup.sh
-```
-*(or run `npm run setup`)*
-
-**Windows (Command Prompt / PowerShell):**
-```cmd
-setup.bat
 ```
 
 ---
 
-### Manual Setup (Step-by-Step)
+### ⚡ Step 2: Run Setup (One-Click Setup)
 
-#### 1. Install Dependencies
+Animedy includes an automated setup script that automatically checks your environment, creates your `.env` file, installs all root and frontend dependencies, and verifies the build:
+
+#### 🐧 On Linux / macOS / WSL / Git Bash:
 ```bash
-# Install root & backend dependencies
-npm install
-
-# Install frontend UI dependencies
-cd src/ui_test && npm install
-cd ../..
+./setup.sh
 ```
-*(or run `npm run install:all`)*
+*(Alternatively, you can run: `npm run setup`)*
 
-#### 2. Configure Environment Variables
+#### 🪟 On Windows (Command Prompt / PowerShell):
+Double-click `setup.bat` in File Explorer or run in terminal:
+```cmd
+setup.bat
+```
+
+<details>
+<summary><b>🛠️ Prefer manual setup instead? Click to expand step-by-step instructions</b></summary>
+
+<br/>
+
+1. **Install backend & root dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Install frontend UI dependencies:**
+   ```bash
+   cd src/ui_test
+   npm install
+   cd ../..
+   ```
+   *(Or run `npm run install:all` from the root directory)*
+
+3. **Configure environment variables:**
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Verify types & components:**
+   ```bash
+   cd src/ui_test && npm run check
+   ```
+
+</details>
+
+---
+
+### 🚀 Step 3: How to Run
+
+You have three convenient ways to run the project depending on what you are working on:
+
+#### 🌟 Option A: Run Both Backend & Frontend Together (Recommended)
+Starts both the Hono backend server and Vite frontend server with live hot-reloading:
+
 ```bash
-cp .env.example .env
+./run.sh
 ```
-Default `.env` configuration:
-```env
-PORT=3000
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=animedy_user
-DB_PASSWORD=changeme
-DB_NAME=animedy
-JWT_SECRET=changeme_jwt_secret
+> Press <kbd>Ctrl</kbd> + <kbd>C</kbd> at any time to gracefully shut down both servers.
+
+#### 🎨 Option B: Run Frontend UI Only
+If you only want to browse anime, test the video player, or work on UI/Svelte components, you don't even need the backend:
+
+```bash
+cd src/ui_test
+npm run dev
 ```
+Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
-#### 3. Run Development Servers
-- **Run both Backend + Frontend simultaneously:**
-  ```bash
-  ./run.sh
-  ```
-- **Run Frontend UI only (client-side AniList / video player):**
-  ```bash
-  cd src/ui_test && npm run dev
-  ```
-  App opens at `http://localhost:5173`.
-- **Run Backend API only:**
-  ```bash
-  npm run dev
-  ```
-  API runs at `http://localhost:3000`, Swagger docs at `http://localhost:3000/docs`.
+#### ⚙️ Option C: Run Backend API Only
+If you are developing or testing Hono REST endpoints:
 
-### 5. Run Test Suite
+```bash
+npm run dev
+```
+API runs at **[http://localhost:3000](http://localhost:3000)**. Interactive Swagger docs open at **[http://localhost:3000/docs](http://localhost:3000/docs)**.
+
+---
+
+### 🌐 Local URLs Reference
+
+| Service | URL | Description |
+| :--- | :--- | :--- |
+| **Frontend Web App** | `http://localhost:5173` | Svelte 5 streaming dashboard & player |
+| **Backend REST API** | `http://localhost:3000` | Hono microservice & data layer |
+| **Interactive Docs** | `http://localhost:3000/docs` | Swagger / OpenAPI UI specification |
+
+---
+
+### 🗄️ Step 4: Database Setup (Optional)
+
+If you are developing backend account authentication or database caching:
+
+1. Ensure MariaDB or MySQL is running locally.
+2. Update `.env` credentials if needed (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`).
+3. Import the database schema:
+   ```bash
+   mysql -u root -p animedy < src/animedy_v1/queries/ddl.sql
+   ```
+
+---
+
+### 🧪 Step 5: Testing & Verification
+
+Run backend unit tests:
 ```bash
 npm test
 ```
+
+Run frontend type and component checks:
+```bash
+cd src/ui_test && npm run check
+```
+
+Run frontend unit tests:
+```bash
+cd src/ui_test && npm test
+```
+
 
 <br/>
 

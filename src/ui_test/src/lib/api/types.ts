@@ -268,6 +268,10 @@ export interface SettingsPayload {
   countdown_seconds: number;
   metadata_source: MetadataSource;
   skip_source: SkipSource;
+  // Frontend-only — not part of the backend SettingsPayload, never synced
+  // to /api/settings (this store is local-only, see settings.svelte.ts).
+  notify_episode_updates: boolean;
+  notify_discovery: boolean;
 }
 
 export interface SettingsGetResponse {

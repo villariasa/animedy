@@ -13,9 +13,12 @@
   import Watch from "$lib/pages/Watch.svelte";
   import UndoSnackbar from "$lib/components/UndoSnackbar.svelte";
   import NewEpisodeNotifier from "$lib/components/NewEpisodeNotifier.svelte";
+  import DiscoveryNotifier from "$lib/components/DiscoveryNotifier.svelte";
   import NotificationPrompt from "$lib/components/NotificationPrompt.svelte";
   import AmbientBackground from "$lib/components/AmbientBackground.svelte";
   import MobileNavDrawer from "$lib/components/MobileNavDrawer.svelte";
+  import NotificationBell from "$lib/components/NotificationBell.svelte";
+  import MoreMenu from "$lib/components/MoreMenu.svelte";
   import { router } from "$lib/router.svelte";
   import { homeReset } from "$lib/stores/homeReset.svelte";
 
@@ -60,6 +63,14 @@
       <HeaderSearch bind:isSearchActive />
     </div>
 
+    <!-- Notification bell — mobile only here; on desktop it lives grouped
+         with Liked/My List in the nav cluster below. -->
+    {#if !isSearchActive}
+      <div class="sm:hidden">
+        <NotificationBell />
+      </div>
+    {/if}
+
     <!-- Mobile-only Hamburger Menu Button (placed on the right) -->
     {#if !isSearchActive}
       <button
@@ -75,7 +86,10 @@
       </button>
     {/if}
 
-    <!-- Main Navigation (desktop only; on mobile these are in the mobile menu drawer) -->
+    <!-- Main Navigation (desktop only; on mobile these are in the mobile menu drawer).
+         Liked, My List, and Notifications are grouped as one cluster since
+         they're all "things that update" — History/Stats/Settings collapse
+         into the More menu to keep the bar from feeling cluttered. -->
     <nav class="hidden sm:flex items-center gap-0.5 sm:gap-1 text-sm shrink-0" aria-label="Main">
       <a
         href="#/favorites"
@@ -111,41 +125,11 @@
         {/if}
       </a>
 
-      <a
-        href="#/history"
-        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'history' ? 'bg-primary/10 text-primary font-medium' : ''}"
-        title="Watch history"
-        aria-label="Watch history"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 opacity-75 shrink-0">
-          <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 0 0 1.06-1.06l-2.78-2.78V5Z" clip-rule="evenodd" />
-        </svg>
-        <span class="hidden sm:inline">History</span>
-      </a>
+      <NotificationBell />
 
-      <a
-        href="#/stats"
-        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'stats' ? 'bg-primary/10 text-primary font-medium' : ''}"
-        title="Stats"
-        aria-label="Stats"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 opacity-75 shrink-0">
-          <path d="M15.5 2A1.5 1.5 0 0 0 14 3.5v13a1.5 1.5 0 0 0 1.5 1.5h1a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 16.5 2h-1ZM9.5 6A1.5 1.5 0 0 0 8 7.5v9A1.5 1.5 0 0 0 9.5 18h1a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 10.5 6h-1ZM3.5 10A1.5 1.5 0 0 0 2 11.5v5A1.5 1.5 0 0 0 3.5 18h1A1.5 1.5 0 0 0 6 16.5v-5A1.5 1.5 0 0 0 4.5 10h-1Z" />
-        </svg>
-        <span class="hidden sm:inline">Stats</span>
-      </a>
+      <span class="mx-1 h-5 w-px shrink-0 bg-border/70"></span>
 
-      <a
-        href="#/settings"
-        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'settings' ? 'bg-primary/10 text-primary font-medium' : ''}"
-        title="Settings"
-        aria-label="Settings"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 opacity-75 shrink-0">
-          <path fill-rule="evenodd" d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd" />
-        </svg>
-        <span class="hidden sm:inline">Settings</span>
-      </a>
+      <MoreMenu />
     </nav>
   </header>
 
@@ -174,4 +158,5 @@
   <UndoSnackbar />
   <NotificationPrompt />
   <NewEpisodeNotifier />
+  <DiscoveryNotifier />
 </div>

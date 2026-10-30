@@ -49,3 +49,17 @@
 body {
   @apply bg-background text-foreground antialiased;
 }
+
+/* Cards in long scrollable grids/lists: skip layout+paint entirely while
+   off-screen (content-visibility), instead of the browser recomputing them
+   every time they leave/re-enter the viewport while scrolling. This is what
+   causes "it re-renders again when scrolling back up" jank on mobile — the
+   fix is browser-native, no virtualization library needed. */
+.cv-card {
+  content-visibility: auto;
+  /* "auto" keyword: remembers the element's real measured size after its
+     first layout and reuses that instead of this placeholder — avoids a
+     layout jump for cards whose real height varies a lot (video vs poster
+     aspect ratios). */
+  contain-intrinsic-size: auto 320px;
+}

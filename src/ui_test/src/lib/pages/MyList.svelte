@@ -230,7 +230,7 @@
           <div class="group relative flex w-full min-w-0 flex-col gap-2 rounded-xl text-left">
             <button
               type="button"
-              class="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="cv-card relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onclick={() => router.go(`/anime/${item.anime_id}`)}
             >
               {#if item.cover_image}
@@ -238,6 +238,7 @@
                   src={item.cover_image}
                   alt=""
                   loading="lazy"
+                        decoding="async"
                   class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
               {/if}
@@ -302,7 +303,7 @@
         <div class="group relative flex w-full min-w-0 flex-col gap-2 rounded-xl text-left">
           <button
             type="button"
-            class="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            class="cv-card relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onclick={() => router.go(`/anime/${item.anime_id}`)}
           >
             {#if item.cover_image}
@@ -310,6 +311,7 @@
                 src={item.cover_image}
                 alt=""
                 loading="lazy"
+                        decoding="async"
                 class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
             {/if}

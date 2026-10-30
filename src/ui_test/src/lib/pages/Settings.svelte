@@ -401,6 +401,23 @@
           {requestingNotif ? "Requesting…" : "Enable notifications"}
         </button>
       {/if}
+
+      {#if notifPermission === "granted"}
+        <div class="mt-4 divide-y divide-border/60 border-t border-border/60 pt-1">
+          {@render toggle(
+            "Episode updates",
+            "Notify when a new episode airs for anything in Liked or My List",
+            settings.current.notify_episode_updates,
+            (v) => void settings.save({ notify_episode_updates: v })
+          )}
+          {@render toggle(
+            "Discovery picks",
+            "Occasional random suggestion from Trending/New Releases — at most once a day",
+            settings.current.notify_discovery,
+            (v) => void settings.save({ notify_discovery: v })
+          )}
+        </div>
+      {/if}
     </section>
   {/if}
 </div>

@@ -6,6 +6,8 @@
   import { watchStatusStore } from "$lib/stores/watchStatus.svelte";
   import { router } from "$lib/router.svelte";
   import { notifyNewEpisodeOnce } from "$lib/notifications";
+  import { settings } from "$lib/stores/settings.svelte";
+  import { notificationHistory } from "$lib/stores/notificationHistory.svelte";
   import { onDestroy } from "svelte";
 
   interface Notice {
@@ -59,13 +61,28 @@
         notices = fresh;
         setTimeout(() => (notices = []), 12_000);
       }
-      for (const n of fresh) {
-        notifyNewEpisodeOnce(n.anime_id, n.episode, n.title, n.cover);
+      if (settings.current.notify_episode_updates) {
+        for (const n of fresh) {
+          notifyNewEpisodeOnce(n.anime_id, n.episode, n.title, n.cover);
+          notificationHistory.add({
+            id: `episode:${n.anime_id}:${n.episode}`,
+            type: "episode",
+            anime_id: n.anime_id,
+            title: n.title,
+            message: `Episode ${n.episode} just released`,
+            cover: n.cover,
+            created_at: new Date().toISOString()
+          });
+        }
       }
     } catch {
       // keep whatever notices are already showing
     }
   }
+
+  $effect(() => {
+    void settings.load();
+  });
 
   $effect(() => {
     // Synchronous reads so Svelte tracks these as dependencies — re-run the

@@ -50,11 +50,37 @@ export function notifyNewEpisodeOnce(animeId: number, episode: number, title: st
   notified.add(id);
   persistNotified(notified);
   try {
-    new Notification(`New episode: ${title}`, {
+    const notif = new Notification(`New episode: ${title}`, {
       body: `Episode ${episode} just released`,
       icon: cover ?? "/icons/icon.svg",
       tag: id
     });
+    notif.onclick = () => {
+      window.focus();
+      location.hash = `/anime/${animeId}`;
+      notif.close();
+    };
+  } catch {
+    // Notification constructor can throw in some embedded/webview contexts
+  }
+}
+
+/** Random discovery pick — "you might like this" nudge, unrelated to
+ * anything the user follows. Caller owns the once-a-day cap; this just
+ * fires the OS notification and wires click-through to the anime page. */
+export function notifyDiscoveryPick(animeId: number, title: string, cover: string | null, reason: string): void {
+  if (notificationPermission() !== "granted") return;
+  try {
+    const notif = new Notification(`You might like: ${title}`, {
+      body: reason,
+      icon: cover ?? "/icons/icon.svg",
+      tag: `discovery:${animeId}`
+    });
+    notif.onclick = () => {
+      window.focus();
+      location.hash = `/anime/${animeId}`;
+      notif.close();
+    };
   } catch {
     // Notification constructor can throw in some embedded/webview contexts
   }

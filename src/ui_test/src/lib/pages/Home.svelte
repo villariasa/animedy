@@ -494,7 +494,7 @@
       {:else if results.length > 0}
         <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {#each results as item (item.anime_id)}
-            <li>
+            <li class="cv-card">
               <button
                 type="button"
                 class="group flex w-full flex-col gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -506,6 +506,7 @@
                       src={item.cover_image}
                       alt=""
                       loading="lazy"
+                        decoding="async"
                       class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                   {/if}
@@ -664,7 +665,7 @@
                 <div class="group relative flex w-full min-w-0 flex-col gap-2 rounded-xl text-left">
                   <button
                     type="button"
-                    class="relative {isLatest ? 'aspect-video' : 'aspect-[2/3]'} w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    class="cv-card relative {isLatest ? 'aspect-video' : 'aspect-[2/3]'} w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onclick={() => {
                       if (isLatest && item.latest_episode) {
                         router.go(`/watch/${item.anime_id}/${item.latest_episode}`);
@@ -678,6 +679,7 @@
                         src={previewImg}
                         alt=""
                         loading="lazy"
+                        decoding="async"
                         class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                       />
                     {/if}
@@ -940,6 +942,7 @@
                           src={item.banner_image || item.cover_image}
                           alt=""
                           loading="lazy"
+                        decoding="async"
                           class="h-full w-full object-cover object-center sm:object-right transition-transform duration-500 ease-out group-hover:scale-110"
                         />
                       {/if}

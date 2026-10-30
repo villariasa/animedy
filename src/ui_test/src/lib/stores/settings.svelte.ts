@@ -13,7 +13,9 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   auto_fullscreen: false,
   countdown_seconds: 10,
   metadata_source: "anilist",
-  skip_source: "aniskip"
+  skip_source: "aniskip",
+  notify_episode_updates: true,
+  notify_discovery: true
 };
 
 /** Player settings store ($state) — stored in IndexedDB on this device only
