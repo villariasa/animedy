@@ -16,6 +16,7 @@ import { progressRoutes } from "./routes/progress.js";
 import { continueWatchingRoutes } from "./routes/continueWatching.js";
 import { watchNextRoutes } from "./routes/watchNext.js";
 import { historyRoutes } from "./routes/history.js";
+import { anilistProxyRoutes } from "./routes/anilistProxy.js";
 import { DOCS_PAGE_HTML } from "./lib/docsPage.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -34,6 +35,7 @@ app.route("/api/progress", progressRoutes);
 app.route("/api/continue-watching", continueWatchingRoutes);
 app.route("/api/watch-next", watchNextRoutes);
 app.route("/api/history", historyRoutes);
+app.route("/api/proxy/anilist", anilistProxyRoutes);
 
 // Lists all Swagger JSON definitions available in src/jsondef/.
 app.post("/docs/index", async (context) => {

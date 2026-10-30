@@ -45,18 +45,18 @@
   let loadingMore = $state(false);
   // Pins the "now" boundary for a Latest Release paging session so page 2+
   // continues chronologically from page 1 instead of drifting forward in time.
-  let latestReleaseAnchorAt = $state(0);
+  let latestReleaseAnchorAt = 0;
   // Raw AniList airingSchedules page cursor to resume from on the next forward fetch.
-  let latestReleaseRawPage = $state(1);
+  let latestReleaseRawPage = 1;
   // Anime ids already shown on an earlier UI page this session — a show's
   // older episodes live on later raw pages, so without this it can resurface
   // with a stale episode after already appearing with its newest one.
-  let latestReleaseSeenIds = $state<Set<number>>(new Set());
+  let latestReleaseSeenIds = new Set<number>();
   // Already-fetched UI pages, so Prev/Next within range is instant and never
   // re-derives a page (which could otherwise shuffle/duplicate results).
-  let latestReleasePagesCache = $state<Map<number, AnimeSearchResultItem[]>>(new Map());
+  let latestReleasePagesCache = new Map<number, AnimeSearchResultItem[]>();
   // Whether AniList still has more raw airingSchedules beyond the last page we fetched.
-  let latestReleaseHasMoreRaw = $state(false);
+  let latestReleaseHasMoreRaw = false;
 
   // Discovery filters applied to the curated grid.
   const FORMAT_OPTIONS: AnimeFormat[] = ["TV", "MOVIE", "OVA", "ONA", "SPECIAL", "TV_SHORT", "MUSIC"];

@@ -21,11 +21,13 @@
   let isPaused = $state(false);
   // Ultra-HD banner upgrades from Kitsu (anime_id → image url).
   let hdBanners = $state<Record<number, string>>({});
+  const requestedBanners = new Set<number>();
 
   $effect(() => {
     for (const item of validItems.slice(0, 8)) {
       const id = item.anime_id;
-      if (!(id in hdBanners)) {
+      if (!requestedBanners.has(id)) {
+        requestedBanners.add(id);
         void getHDBanner(id).then((url) => {
           if (url) {
             hdBanners = { ...hdBanners, [id]: url };
@@ -39,11 +41,13 @@
 
   // Trailers fetched from Jikan/MAL for items AniList has none for.
   let fallbackTrailers = $state<Record<number, string | null>>({});
+  const requestedTrailers = new Set<number>();
 
   $effect(() => {
     for (const item of validItems.slice(0, 8)) {
       const id = item.anime_id;
-      if (!item.trailer_id && item.mal_id && !(id in fallbackTrailers)) {
+      if (!item.trailer_id && item.mal_id && !requestedTrailers.has(id)) {
+        requestedTrailers.add(id);
         void getFallbackTrailerId(item.mal_id).then((trailerId) => {
           fallbackTrailers = { ...fallbackTrailers, [id]: trailerId };
         });

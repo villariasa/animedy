@@ -13,7 +13,12 @@ import type {
 } from "$lib/api/types";
 import { getCached, putCached } from "$lib/db/local";
 
-const ANILIST_URL = "https://graphql.anilist.co";
+// Same-origin proxy (see src/animedy_v1/routes/anilistProxy.ts) caches
+// AniList responses server-side. When the backend isn't running (e.g. standalone
+// Vite dev or static hosting), gql automatically falls back to direct AniList.
+const ANILIST_DIRECT_URL = "https://graphql.anilist.co";
+const ANILIST_PROXY_URL = "/api/proxy/anilist/graphql";
+const FETCH_TIMEOUT_MS = 10_000;
 
 const MEDIA_FIELDS = `
   id
@@ -71,12 +76,28 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function gql<T>(key: string, query: string, variables: Record<string, unknown>): Promise<T> {
-  try {
-    let res = await fetch(ANILIST_URL, {
+  const post = (url: string) =>
+    fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ query, variables })
+      body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
     });
+
+  try {
+    let activeUrl = ANILIST_PROXY_URL;
+    let res: Response;
+    try {
+      res = await post(activeUrl);
+      if (!res.ok && res.status !== 429) {
+        activeUrl = ANILIST_DIRECT_URL;
+        res = await post(activeUrl);
+      }
+    } catch {
+      activeUrl = ANILIST_DIRECT_URL;
+      res = await post(activeUrl);
+    }
+
     // AniList rate-limits (429) and publishes how long to wait via Retry-After.
     // Worth one short automatic retry so a brief burst doesn't surface as an
     // error; a long cooldown just fails fast with an accurate message instead
@@ -85,11 +106,7 @@ async function gql<T>(key: string, query: string, variables: Record<string, unkn
       const retryAfter = Number(res.headers.get("Retry-After"));
       if (Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 5) {
         await sleep(retryAfter * 1000);
-        res = await fetch(ANILIST_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ query, variables })
-        });
+        res = await post(activeUrl);
       } else {
         throw new ApiError(
           `AniList is rate-limiting requests — try again in ${Number.isFinite(retryAfter) ? retryAfter : 60}s.`,
@@ -204,7 +221,8 @@ async function searchViaJikan(search: string): Promise<AnimeSearchResultItem[]> 
   let items: AnimeSearchResultItem[] = [];
   try {
     const res = await fetch(
-      `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(search)}&limit=15&sfw=true`
+      `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(search)}&limit=15&sfw=true`,
+      { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
     );
     if (res.ok) {
       const payload = (await res.json()) as { data: Array<{ mal_id: number }> };
