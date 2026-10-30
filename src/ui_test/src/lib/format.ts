@@ -103,3 +103,26 @@ export function formatAirDate(dateStr: string | null | undefined): string | null
   }
   return dateStr;
 }
+
+/** "Today" if released since local midnight, "Yesterday" if released yesterday, else null. */
+export function getReleaseDayTag(airingAtSec: number | null | undefined): "Today" | "Yesterday" | null {
+  if (!airingAtSec || airingAtSec <= 0) return null;
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const tomorrowStart = todayStart + 86400 * 1000;
+  const yesterdayStart = todayStart - 86400 * 1000;
+  const airingMs = airingAtSec * 1000;
+
+  // Has to be released already (allow small 5-min drift for server timestamp)
+  if (airingMs > now.getTime() + 5 * 60 * 1000) {
+    return null;
+  }
+
+  if (airingMs >= todayStart && airingMs < tomorrowStart) {
+    return "Today";
+  }
+  if (airingMs >= yesterdayStart && airingMs < todayStart) {
+    return "Yesterday";
+  }
+  return null;
+}

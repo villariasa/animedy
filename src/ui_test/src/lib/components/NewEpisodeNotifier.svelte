@@ -3,8 +3,10 @@
   import { getAllLocalProgress } from "$lib/db/local";
   import { displayTitle } from "$lib/format";
   import { likes } from "$lib/stores/likes.svelte";
+  import { watchStatusStore } from "$lib/stores/watchStatus.svelte";
   import { router } from "$lib/router.svelte";
   import { notifyNewEpisodeOnce } from "$lib/notifications";
+  import { onDestroy } from "svelte";
 
   interface Notice {
     anime_id: number;
@@ -13,45 +15,68 @@
     cover: string | null;
   }
 
+  // Re-checked periodically while the app stays open, so an episode that
+  // airs mid-session still gets caught instead of only checking once at load.
+  const RECHECK_MS = 10 * 60 * 1000;
+
   let notices = $state<Notice[]>([]);
 
-  // Once per site open: liked anime ∩ episodes aired today, minus already
-  // watched. getTodayReleases is network-first with IndexedDB fallback, so
-  // this also works from cache when offline.
-  $effect(() => {
-    if (likes.items.length > 0) {
-      void (async () => {
-        try {
-          const [releases, progress] = await Promise.all([getTodayReleases(), getAllLocalProgress()]);
-          const likedIds = new Set(likes.items.map((i) => i.anime_id));
-          const maxWatched: Record<number, number> = {};
-          for (const row of progress) {
-            const ep = row.episode_number ?? 0;
-            if (ep > (maxWatched[row.anime_id] ?? 0)) {
-              maxWatched[row.anime_id] = ep;
-            }
-          }
-          notices = releases
-            .filter((r) => likedIds.has(r.item.anime_id) && (maxWatched[r.item.anime_id] ?? 0) < r.episode)
-            .slice(0, 4)
-            .map((r) => ({
-              anime_id: r.item.anime_id,
-              episode: r.episode,
-              title: displayTitle(r.item.title_english, r.item.title_romaji),
-              cover: r.item.cover_image
-            }));
-          if (notices.length > 0) {
-            setTimeout(() => (notices = []), 12_000);
-          }
-          for (const n of notices) {
-            notifyNewEpisodeOnce(n.anime_id, n.episode, n.title, n.cover);
-          }
-        } catch {
-          notices = [];
-        }
-      })();
+  // Anime the user wants to hear about: Liked + My List, minus Dropped
+  // (no point notifying for a show they've already given up on).
+  function trackedAnimeIds(): Set<number> {
+    const ids = new Set(likes.items.map((i) => i.anime_id));
+    for (const entry of watchStatusStore.items) {
+      if (entry.status !== "dropped") ids.add(entry.anime_id);
     }
+    return ids;
+  }
+
+  // Liked/My List anime ∩ episodes aired today, minus already watched.
+  // getTodayReleases is network-first with IndexedDB fallback, so this also
+  // works from cache when offline.
+  async function checkForNewEpisodes(): Promise<void> {
+    const trackedIds = trackedAnimeIds();
+    if (trackedIds.size === 0) return;
+    try {
+      const [releases, progress] = await Promise.all([getTodayReleases(), getAllLocalProgress()]);
+      const maxWatched: Record<number, number> = {};
+      for (const row of progress) {
+        const ep = row.episode_number ?? 0;
+        if (ep > (maxWatched[row.anime_id] ?? 0)) {
+          maxWatched[row.anime_id] = ep;
+        }
+      }
+      const fresh = releases
+        .filter((r) => trackedIds.has(r.item.anime_id) && (maxWatched[r.item.anime_id] ?? 0) < r.episode)
+        .slice(0, 4)
+        .map((r) => ({
+          anime_id: r.item.anime_id,
+          episode: r.episode,
+          title: displayTitle(r.item.title_english, r.item.title_romaji),
+          cover: r.item.cover_image
+        }));
+      if (fresh.length > 0) {
+        notices = fresh;
+        setTimeout(() => (notices = []), 12_000);
+      }
+      for (const n of fresh) {
+        notifyNewEpisodeOnce(n.anime_id, n.episode, n.title, n.cover);
+      }
+    } catch {
+      // keep whatever notices are already showing
+    }
+  }
+
+  $effect(() => {
+    // Synchronous reads so Svelte tracks these as dependencies — re-run the
+    // check whenever the tracked anime set changes.
+    void likes.items;
+    void watchStatusStore.items;
+    void checkForNewEpisodes();
   });
+
+  const interval = setInterval(() => void checkForNewEpisodes(), RECHECK_MS);
+  onDestroy(() => clearInterval(interval));
 
   function watch(n: Notice): void {
     notices = notices.filter((x) => x.anime_id !== n.anime_id);

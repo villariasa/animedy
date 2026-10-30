@@ -146,6 +146,31 @@
     }
   }
 
+  // Quick-access toggles mirrored from Settings — persisted immediately
+  // (no separate save step) since this bar has no form/submit of its own.
+  function toggleAutoSkip(): void {
+    const next = !(settings.current.auto_skip_intro && settings.current.auto_skip_outro);
+    void settings.save({ auto_skip_intro: next, auto_skip_outro: next });
+    sendSkipData();
+  }
+
+  function toggleAutoplay(): void {
+    void settings.save({ autoplay: !settings.current.autoplay });
+  }
+
+  function toggleAutoFullscreen(): void {
+    void settings.save({ auto_fullscreen: !settings.current.auto_fullscreen });
+  }
+
+  // Best-effort: entering fullscreen without a click is blocked by most
+  // browsers unless this still runs inside the "ended" event's transient
+  // activation window — harmless no-op (caught) when it's blocked.
+  function maybeAutoFullscreen(): void {
+    if (settings.current.auto_fullscreen && !document.fullscreenElement) {
+      void frameBox?.requestFullscreen().catch(() => undefined);
+    }
+  }
+
   // ---- Server 1 player bridge (megaplay handle-bridge postMessage API) ----
   // The wrapper (anichi.to.html) relays messages both ways. We use:
   //   SKP_DATA  → sets intro/outro windows + auto-skip inside THEIR player
@@ -249,6 +274,7 @@
     if (settings.current.auto_next && nextEpisode) {
       // Same container, new src → fullscreen (ours) survives the switch.
       goToEpisode(nextEpisode.episode_number);
+      maybeAutoFullscreen();
     }
   }
 
@@ -341,6 +367,10 @@
       await settings.load();
       anime = await getAnimeDetails(aId);
       episodes = buildEpisodes(anime);
+      if (episodes.length > 0 && epNum > episodes.length) {
+        router.go(`/watch/${aId}/${episodes.length}`);
+        return;
+      }
       void getEpisodeMedia(
         aId,
         anime.mal_id,
@@ -687,6 +717,44 @@
                 onclick={() => (selectedServer = 'embed_vidsrc_cc')}
               >
                 Server 4
+              </button>
+
+              <!-- Quick-access automation toggles (mirrored from Settings) -->
+              <span class="mx-1 h-5 w-px bg-border/70"></span>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings.current.auto_skip_intro && settings.current.auto_skip_outro ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                onclick={toggleAutoSkip}
+                title="Automatically skip intro and outro"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
+                </svg>
+                <span>Auto-Skip</span>
+              </button>
+
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings.current.autoplay ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                onclick={toggleAutoplay}
+                title="Start the episode as soon as it loads"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM9.555 7.168A1 1 0 0 0 8 8v4a1 1 0 0 0 1.555.832l3-2a1 1 0 0 0 0-1.664l-3-2Z" clip-rule="evenodd" />
+                </svg>
+                <span>Autoplay</span>
+              </button>
+
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings.current.auto_fullscreen ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                onclick={toggleAutoFullscreen}
+                title="Automatically go fullscreen when the next episode starts"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+                <span>Auto-Fullscreen</span>
               </button>
             </div>
 

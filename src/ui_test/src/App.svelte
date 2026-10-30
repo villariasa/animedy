@@ -13,6 +13,7 @@
   import Watch from "$lib/pages/Watch.svelte";
   import UndoSnackbar from "$lib/components/UndoSnackbar.svelte";
   import NewEpisodeNotifier from "$lib/components/NewEpisodeNotifier.svelte";
+  import NotificationPrompt from "$lib/components/NotificationPrompt.svelte";
   import AmbientBackground from "$lib/components/AmbientBackground.svelte";
   import MobileNavDrawer from "$lib/components/MobileNavDrawer.svelte";
   import { router } from "$lib/router.svelte";
@@ -171,5 +172,6 @@
   </main>
 
   <UndoSnackbar />
+  <NotificationPrompt />
   <NewEpisodeNotifier />
 </div>

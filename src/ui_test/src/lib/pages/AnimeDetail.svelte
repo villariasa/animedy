@@ -86,7 +86,9 @@
             : null,
           anime.format,
           anime.season && anime.season_year ? `${anime.season} ${anime.season_year}` : anime.season_year,
-          anime.episode_count ? `${anime.episode_count} eps` : null,
+          anime.total_episodes && anime.total_episodes > (anime.episode_count ?? 0)
+            ? `${anime.episode_count ?? 0}/${anime.total_episodes} eps`
+            : anime.episode_count ? `${anime.episode_count} eps` : null,
           anime.episode_duration ? `${anime.episode_duration} min` : null,
           anime.status
         ]
@@ -179,7 +181,7 @@
         anime.episode_count
       ).then((media) => {
         if (media && media.size > 0) {
-          if (episodes.length === 0) {
+          if (episodes.length === 0 && anime?.status !== "NOT_YET_RELEASED" && (anime?.episode_count === null || anime?.episode_count === undefined)) {
             const maxEp = Math.max(...media.keys());
             const eps: EpisodeListItem[] = [];
             for (let n = 1; n <= maxEp; n += 1) {

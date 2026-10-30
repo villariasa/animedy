@@ -6,6 +6,7 @@
   import { router } from "$lib/router.svelte";
   import { Button } from "$lib/components/ui/button";
   import TrendingSuggestions from "$lib/components/TrendingSuggestions.svelte";
+  import AddToListButton from "$lib/components/AddToListButton.svelte";
 
   let searchQuery = $state("");
   let airing = $state<Map<number, AiringInfo>>(new Map());
@@ -174,6 +175,11 @@
               <path d="m9.653 16.915-.005-.003-.019-.01a20.759 20.759 0 0 1-1.16-1.107 20.373 20.373 0 0 1-3.69-4.836A7.472 7.472 0 0 1 4 7.5C4 4.462 6.462 2 9.5 2a5.498 5.498 0 0 1 4.298 2.043A5.498 5.498 0 0 1 18.5 7.5c0 1.258-.337 2.44-.925 3.46a20.373 20.373 0 0 1-3.69 4.836 20.758 20.758 0 0 1-1.16 1.107l-.02.01-.005.003h-.002a.75.75 0 0 1-.698 0l-.002-.003Z" />
             </svg>
           </button>
+
+          <!-- Add to List Button -->
+          <div class="absolute top-2 right-10">
+            <AddToListButton anime={item} />
+          </div>
 
           <!-- Details -->
           <div class="w-full min-w-0 overflow-hidden">

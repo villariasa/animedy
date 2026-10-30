@@ -1,6 +1,6 @@
 // T6.3 — Continue Watching card math + shared formatters.
 import { describe, expect, test } from "vitest";
-import { displayTitle, formatRemaining, formatTime, stripHtml } from "./format";
+import { displayTitle, formatRemaining, formatTime, getReleaseDayTag, stripHtml } from "./format";
 
 describe("formatRemaining (Continue Watching card)", () => {
   test("hours + minutes", () => {
@@ -41,3 +41,35 @@ describe("stripHtml (XSS-safe descriptions)", () => {
     );
   });
 });
+
+describe("getReleaseDayTag", () => {
+  test("returns Today for timestamps from earlier today", () => {
+    const now = new Date();
+    // 10 minutes ago
+    const tenMinAgo = Math.floor((now.getTime() - 10 * 60 * 1000) / 1000);
+    // At local midnight + 1 hour (as long as now > midnight + 1 hour)
+    const todayOneAm = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 1, 0, 0).getTime() / 1000);
+    expect(getReleaseDayTag(tenMinAgo)).toBe("Today");
+    if (Date.now() / 1000 > todayOneAm) {
+      expect(getReleaseDayTag(todayOneAm)).toBe("Today");
+    }
+  });
+
+  test("returns Yesterday for timestamps from yesterday", () => {
+    const now = new Date();
+    const yesterdayMidday = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12, 0, 0).getTime() / 1000);
+    expect(getReleaseDayTag(yesterdayMidday)).toBe("Yesterday");
+  });
+
+  test("returns null for 2+ days ago or future or null", () => {
+    const now = new Date();
+    const twoDaysAgo = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 12, 0, 0).getTime() / 1000);
+    const tomorrow = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12, 0, 0).getTime() / 1000);
+    expect(getReleaseDayTag(twoDaysAgo)).toBeNull();
+    expect(getReleaseDayTag(tomorrow)).toBeNull();
+    expect(getReleaseDayTag(null)).toBeNull();
+    expect(getReleaseDayTag(undefined)).toBeNull();
+    expect(getReleaseDayTag(0)).toBeNull();
+  });
+});
+

@@ -5,16 +5,18 @@
     searchAnime,
     getLatestReleases,
     getTrendingSpotlight,
+    getEpisodeMedia,
     ANILIST_GENRES,
     type BrowseTag
   } from "$lib/api/anilist";
   import type { AnimeFormat, AnimeSearchResultItem, ContinueWatchingItem } from "$lib/api/types";
   import ContinueWatchingCard from "$lib/components/ContinueWatchingCard.svelte";
+  import AddToListButton from "$lib/components/AddToListButton.svelte";
   import HeroSpotlight from "$lib/components/HeroSpotlight.svelte";
   import CommunityShareBar from "$lib/components/CommunityShareBar.svelte";
   import WeeklySchedule from "$lib/components/WeeklySchedule.svelte";
   import { getContinueWatching } from "$lib/continuation";
-  import { displayTitle, statusLabel, statusBadgeClass } from "$lib/format";
+  import { displayTitle, statusLabel, statusBadgeClass, getReleaseDayTag } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
   import { homeReset } from "$lib/stores/homeReset.svelte";
@@ -286,6 +288,32 @@
     void loadRankings(rankingTab);
   });
 
+  // Enhance Latest Release items with episode thumbnails from TVMaze/Jikan if AniList had none
+  const requestedEpisodeThumbs = new Set<string>();
+  $effect(() => {
+    if (activeTab === "latest_release" && curatedItems.length > 0) {
+      for (const item of curatedItems) {
+        const ep = item.latest_episode;
+        const key = `${item.anime_id}:${ep}`;
+        if (!item.episode_thumbnail && ep && !requestedEpisodeThumbs.has(key)) {
+          requestedEpisodeThumbs.add(key);
+          void getEpisodeMedia(
+            item.anime_id,
+            item.mal_id,
+            item.title_english || item.title_romaji
+          ).then((media) => {
+            const epInfo = media.get(ep);
+            if (epInfo?.thumbnail) {
+              item.episode_thumbnail = epInfo.thumbnail;
+              if (epInfo.title && !item.episode_title) {
+                item.episode_title = epInfo.title;
+              }
+            }
+          }).catch(() => undefined);
+        }
+      }
+    }
+  });
 
   // Continue Watching rail from this device's IndexedDB history.
   $effect(() => {
@@ -596,10 +624,10 @@
         </div>
 
         {#if curatedLoading}
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
-            {#each Array(10) as _, i (i)}
+          <div class="grid {activeTab === 'latest_release' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5'} gap-4">
+            {#each Array(activeTab === 'latest_release' ? 12 : 10) as _, i (i)}
               <div class="flex animate-pulse flex-col gap-2">
-                <div class="aspect-[2/3] w-full rounded-xl bg-muted/60"></div>
+                <div class="{activeTab === 'latest_release' ? 'aspect-video' : 'aspect-[2/3]'} w-full rounded-xl bg-muted/60"></div>
                 <div class="h-4 w-3/4 rounded bg-muted/60"></div>
                 <div class="h-3 w-1/2 rounded bg-muted/40"></div>
               </div>
@@ -617,26 +645,46 @@
             {/if}
           </p>
         {:else}
-          <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
+          <ul class="grid {activeTab === 'latest_release' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5'} gap-4">
             {#each curatedItems as item, index (item.anime_id)}
+              {@const isLatest = activeTab === 'latest_release'}
+              {@const previewImg = isLatest ? (item.episode_thumbnail || item.banner_image || item.cover_image) : item.cover_image}
+              {@const dayTag = getReleaseDayTag(item.airing_at)}
               <li class="min-w-0 overflow-hidden">
                 <div class="group relative flex w-full min-w-0 flex-col gap-2 rounded-xl text-left">
                   <button
                     type="button"
-                    class="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onclick={() => router.go(`/anime/${item.anime_id}`)}
+                    class="relative {isLatest ? 'aspect-video' : 'aspect-[2/3]'} w-full overflow-hidden rounded-xl bg-muted shadow-sm ring-1 ring-border/40 transition-all duration-300 group-hover:shadow-md group-hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onclick={() => {
+                      if (isLatest && item.latest_episode) {
+                        router.go(`/watch/${item.anime_id}/${item.latest_episode}`);
+                      } else {
+                        router.go(`/anime/${item.anime_id}`);
+                      }
+                    }}
                   >
-                    {#if item.cover_image}
+                    {#if previewImg}
                       <img
-                        src={item.cover_image}
+                        src={previewImg}
                         alt=""
                         loading="lazy"
                         class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                       />
                     {/if}
 
-                    <!-- Rank badge (animepahe's Latest Release feed has no rank ribbon — title + episode count only) -->
-                    {#if activeTab !== 'latest_release'}
+                    <!-- Play button hover overlay for Latest Release -->
+                    {#if isLatest}
+                      <div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover:opacity-100">
+                        <div class="flex h-11 w-11 items-center justify-center rounded-full bg-primary/95 text-primary-foreground shadow-xl ring-2 ring-white/20 transition-transform duration-200 group-hover:scale-110">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5 translate-x-0.5">
+                            <path d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11V15.89a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z" />
+                          </svg>
+                        </div>
+                      </div>
+                    {/if}
+
+                    <!-- Rank badge (non-latest tabs) -->
+                    {#if !isLatest}
                       <span
                         class="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold shadow-md backdrop-blur {
                           index === 0
@@ -652,21 +700,35 @@
                       </span>
                     {/if}
 
+                    <!-- Release day badge (only "Today" or "Yesterday") -->
+                    {#if dayTag}
+                      <span
+                        class="absolute {isLatest ? 'top-2 left-2' : 'top-2 left-9'} z-10 flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-md backdrop-blur {
+                          dayTag === 'Today'
+                            ? 'bg-emerald-500/90 text-white ring-1 ring-emerald-300/60'
+                            : 'bg-amber-500/90 text-white ring-1 ring-amber-300/60'
+                        }"
+                      >
+                        <span class="h-1.5 w-1.5 rounded-full {dayTag === 'Today' ? 'bg-white animate-pulse' : 'bg-white/90'}"></span>
+                        {dayTag}
+                      </span>
+                    {/if}
+
                     <!-- Format pill -->
                     {#if item.format}
-                      <span class="absolute bottom-2 left-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
+                      <span class="absolute {isLatest && !dayTag ? 'top-2 left-2' : 'bottom-2 left-2'} rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
                         {item.format}
                       </span>
                     {/if}
 
                     <!-- Latest released episode pill -->
                     {#if item.latest_episode && item.latest_episode > 0}
-                      <span class="absolute bottom-2 right-2 rounded-md bg-primary/90 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-primary-foreground shadow backdrop-blur">
+                      <span class="absolute bottom-2 right-2 rounded-lg bg-primary/95 px-2 py-0.5 text-[10px] font-black tracking-wide text-primary-foreground shadow backdrop-blur">
                         EP {item.latest_episode}
                       </span>
                     {/if}
 
-                    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent"></div>
+                    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent"></div>
                   </button>
 
                   <!-- Like / Love Button -->
@@ -685,6 +747,11 @@
                     </svg>
                   </button>
 
+                  <!-- Add to List Button -->
+                  <div class="absolute top-2 right-10 z-10">
+                    <AddToListButton anime={item} />
+                  </div>
+
                   <div class="w-full min-w-0 overflow-hidden">
                     <button
                       type="button"
@@ -694,7 +761,18 @@
                     >
                       {displayTitle(item.title_english, item.title_romaji)}
                     </button>
+                    {#if isLatest && item.episode_title}
+                      <p class="truncate text-xs font-medium text-slate-300 mt-0.5" title={item.episode_title}>
+                        {item.episode_title}
+                      </p>
+                    {/if}
                     <p class="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                      {#if dayTag}
+                        <span class="font-bold {dayTag === 'Today' ? 'text-emerald-400' : 'text-amber-400'}">
+                          {dayTag}
+                        </span>
+                        <span>·</span>
+                      {/if}
                       {#if item.score}
                         <span class="inline-flex items-center gap-0.5 font-semibold text-amber-400">
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3" aria-hidden="true"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd" /></svg>

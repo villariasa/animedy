@@ -68,6 +68,7 @@ interface AniListMedia {
   trailer: { id: string | null; site: string | null } | null;
   countryOfOrigin: string | null;
   isAdult: boolean | null;
+  streamingEpisodes?: Array<{ title: string | null; thumbnail: string | null }> | null;
   relations?: { edges: Array<{ relationType: string; node: AniListMedia }> };
 }
 
@@ -143,7 +144,33 @@ function fuzzyDate(d: { year: number | null; month: number | null; day: number |
   return `${d.year}-${String(d.month ?? 1).padStart(2, "0")}-${String(d.day ?? 1).padStart(2, "0")}`;
 }
 
-function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
+export function matchEpisodeThumbnail(
+  streamingEpisodes: Array<{ title: string | null; thumbnail: string | null }> | null | undefined,
+  episodeNumber?: number | null
+): { thumbnail: string | null; title: string | null } {
+  if (!streamingEpisodes || streamingEpisodes.length === 0) {
+    return { thumbnail: null, title: null };
+  }
+  if (episodeNumber !== undefined && episodeNumber !== null && episodeNumber > 0) {
+    const regex = new RegExp(`episode\\s*${episodeNumber}\\b`, "i");
+    const exact = streamingEpisodes.find((ep) => ep.title && regex.test(ep.title));
+    if (exact) {
+      return {
+        thumbnail: exact.thumbnail ?? null,
+        title: exact.title ? exact.title.replace(/^episode\s*\d+\s*[-–—:]\s*/i, "").trim() : null
+      };
+    }
+  }
+  const newest = streamingEpisodes.find((ep) => Boolean(ep.thumbnail)) ?? streamingEpisodes[0];
+  return {
+    thumbnail: newest?.thumbnail ?? null,
+    title: newest?.title ? newest.title.replace(/^episode\s*\d+\s*[-–—:]\s*/i, "").trim() : null
+  };
+}
+
+function toSearchItem(m: AniListMedia, episodeNumber?: number, airingAt?: number | null): AnimeSearchResultItem {
+  const epNum = episodeNumber ?? (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : m.episodes);
+  const epMedia = matchEpisodeThumbnail(m.streamingEpisodes, epNum);
   return {
     anime_id: m.id,
     anilist_id: m.id,
@@ -158,7 +185,10 @@ function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
     description: m.description,
     score: m.averageScore,
     genres: m.genres ?? [],
-    latest_episode: m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : m.episodes,
+    latest_episode: epNum,
+    airing_at: airingAt ?? null,
+    episode_thumbnail: epMedia.thumbnail,
+    episode_title: epMedia.title,
     trailer_thumbnail:
       m.trailer?.site === "youtube" && m.trailer.id
         ? `https://img.youtube.com/vi/${m.trailer.id}/maxresdefault.jpg`
@@ -168,6 +198,13 @@ function toSearchItem(m: AniListMedia): AnimeSearchResultItem {
 }
 
 function toDetails(m: AniListMedia): AnimeDetails {
+  const releasedEpisodeCount =
+    m.status === "NOT_YET_RELEASED"
+      ? 0
+      : m.nextAiringEpisode && m.nextAiringEpisode.episode > 0
+      ? Math.max(0, m.nextAiringEpisode.episode - 1)
+      : m.episodes ?? null;
+
   return {
     id: m.id,
     anilist_id: m.id,
@@ -182,7 +219,11 @@ function toDetails(m: AniListMedia): AnimeDetails {
     season_year: m.seasonYear,
     start_date: fuzzyDate(m.startDate),
     end_date: fuzzyDate(m.endDate),
-    episode_count: m.episodes ?? (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : null),
+    episode_count: releasedEpisodeCount,
+    total_episodes: m.episodes,
+    next_airing_episode: m.nextAiringEpisode
+      ? { episode: m.nextAiringEpisode.episode, airing_at: m.nextAiringEpisode.airingAt }
+      : null,
     episode_duration: m.duration,
     description: m.description,
     cover_image: m.coverImage.extraLarge ?? m.coverImage.large,
@@ -209,7 +250,7 @@ export async function searchAnime(search: string): Promise<AnimeSearchResultItem
     { search }
   );
   if (data.Page.media.length > 0) {
-    return data.Page.media.map(toSearchItem);
+    return data.Page.media.map((m) => toSearchItem(m));
   }
   // AniList search has ZERO typo/prefix tolerance ("Friere" → nothing).
   // Fallback: Jikan (MAL) search IS fuzzy — take its MAL ids and resolve
@@ -242,7 +283,7 @@ async function searchViaJikan(search: string): Promise<AnimeSearchResultItem[]> 
         items = mapped.Page.media
           .slice()
           .sort((a, b) => (order.get(a.idMal ?? -1) ?? 99) - (order.get(b.idMal ?? -1) ?? 99))
-          .map(toSearchItem);
+          .map((m) => toSearchItem(m));
       }
     }
   } catch {
@@ -365,7 +406,7 @@ export async function browseAnime(tag: BrowseTag, page = 1, filters?: BrowseFilt
     // provisional entries client-side.
     media = media.filter((m) => m.startDate.year !== null);
   }
-  return { items: media.map(toSearchItem), hasNextPage: data.Page.pageInfo.hasNextPage };
+  return { items: media.map((m) => toSearchItem(m)), hasNextPage: data.Page.pageInfo.hasNextPage };
 }
 
 /** Back-compat helper for callers that only need the items (rankings rail). */
@@ -434,14 +475,22 @@ export async function getRecommendations(id: number): Promise<AnimeSearchResultI
   return data.Media.recommendations.nodes
     .map((n) => n.mediaRecommendation)
     .filter((m): m is AniListMedia => m !== null && m.type === "ANIME")
-    .map(toSearchItem);
+    .map((m) => toSearchItem(m));
 }
 
-/** Synthesize the episode list from the episode count — streams come from
+/** Synthesize the episode list from the released episode count — streams come from
  * embed providers keyed by (anilist id, episode number), so episode "ids"
- * are just the episode numbers. */
+ * are just the episode numbers. Unreleased upcoming episodes are excluded. */
 export function buildEpisodes(anime: AnimeDetails): EpisodeListItem[] {
-  const count = anime.episode_count ?? 0;
+  let count = anime.episode_count ?? 0;
+  if (anime.next_airing_episode && anime.next_airing_episode.episode > 0) {
+    const latestReleased = anime.next_airing_episode.episode - 1;
+    if (latestReleased >= 0) {
+      count = Math.min(count, latestReleased);
+    }
+  } else if (anime.status === "NOT_YET_RELEASED") {
+    count = 0;
+  }
   const episodes: EpisodeListItem[] = [];
   const parts = anime.start_date ? anime.start_date.split("-") : null;
   const p0 = parts?.[0];
@@ -621,14 +670,17 @@ export async function getTodayReleases(): Promise<TodayRelease[]> {
   const now = new Date();
   const dayStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
   const dayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-  const data = await gql<{ Page: { airingSchedules: Array<{ episode: number; airingAt: number; media: AniListMedia }> } }>(
-    `anilist:today:${dayKey}`,
+    const data = await gql<{ Page: { airingSchedules: Array<{ episode: number; airingAt: number; media: AniListMedia }> } }>(
+    `anilist:today:v2:${dayKey}`,
     `query ($start: Int, $end: Int) {
       Page(page: 1, perPage: 50) {
         airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME_DESC) {
           episode
           airingAt
-          media { ${MEDIA_FIELDS} }
+          media {
+            ${MEDIA_FIELDS}
+            streamingEpisodes { title thumbnail }
+          }
         }
       }
     }`,
@@ -643,7 +695,7 @@ export async function getTodayReleases(): Promise<TodayRelease[]> {
     const existing = byAnime.get(m.id);
     if (!existing || s.episode > existing.episode) {
       byAnime.set(m.id, {
-        item: toSearchItem(m),
+        item: toSearchItem(m, s.episode, s.airingAt),
         episode: s.episode,
         airingAt: s.airingAt,
         tag: classifyRelease(s.episode, m)
@@ -653,7 +705,7 @@ export async function getTodayReleases(): Promise<TodayRelease[]> {
   return [...byAnime.values()].sort((x, y) => y.airingAt - x.airingAt);
 }
 
-export const LATEST_RELEASE_PAGE_SIZE = 25;
+export const LATEST_RELEASE_PAGE_SIZE = 28;
 // Raw AniList airingSchedules fetched per page before per-anime dedup/filtering —
 // a buffer well above LATEST_RELEASE_PAGE_SIZE since multiple episodes can land
 // close together and several belong to the same anime.
@@ -667,7 +719,51 @@ export interface LatestReleasePage extends BrowsePage {
 // Safety cap on raw AniList pages pulled per UI page — only kicks in when
 // aggressive filters or heavy duplicate-episode clustering would otherwise
 // require unbounded fetching to fill a page.
-const LATEST_RELEASE_MAX_RAW_FETCHES = 6;
+const LATEST_RELEASE_MAX_RAW_FETCHES = 8;
+
+const server1PlayableCache = new Map<string, boolean>();
+
+/**
+ * Checks whether Server 1 (megaplay.buzz) can actually play an episode.
+ * Server 1 requires a valid MyAnimeList (MAL) ID and returns an error page
+ * (404/410) if the episode has not been uploaded or cannot be streamed.
+ */
+export async function isServer1Playable(
+  malId: number | null | undefined,
+  episodeNumber: number | null | undefined
+): Promise<boolean> {
+  if (!malId || malId <= 0 || !episodeNumber || episodeNumber <= 0) {
+    return false;
+  }
+  const key = `${malId}:${episodeNumber}`;
+  const cached = server1PlayableCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  try {
+    const res = await fetch(`https://megaplay.buzz/stream/mal/${malId}/${episodeNumber}/sub`, {
+      signal: AbortSignal.timeout(3500)
+    });
+    if (!res.ok && res.status !== 200) {
+      server1PlayableCache.set(key, false);
+      return false;
+    }
+    const text = await res.text();
+    const isError =
+      text.includes("<title>Error") ||
+      text.includes("Error Code:") ||
+      text.includes("We're Sorry") ||
+      text.includes("Oops!") ||
+      text.includes("can't find the file");
+    const playable = !isError;
+    server1PlayableCache.set(key, playable);
+    return playable;
+  } catch {
+    server1PlayableCache.set(key, false);
+    return false;
+  }
+}
 
 /**
  * Anime with the most recently AIRED episode first — this is the actual
@@ -710,14 +806,17 @@ export async function getLatestReleases(
         airingSchedules: Array<{ episode: number; airingAt: number; media: AniListMedia }>;
       };
     }>(
-      `anilist:latest:v2:${anchorAt}:p${page}`,
+      `anilist:latest:v3:${anchorAt}:p${page}`,
       `query ($anchor: Int, $page: Int) {
         Page(page: $page, perPage: ${LATEST_RELEASE_FETCH_SIZE}) {
           pageInfo { hasNextPage }
           airingSchedules(airingAt_lesser: $anchor, sort: TIME_DESC) {
             episode
             airingAt
-            media { ${MEDIA_FIELDS} }
+            media {
+              ${MEDIA_FIELDS}
+              streamingEpisodes { title thumbnail }
+            }
           }
         }
       }`,
@@ -729,14 +828,20 @@ export async function getLatestReleases(
 
     // One entry per anime within this batch — keep whichever episode aired
     // most recently (a show can have more than one schedule entry here).
-    const byAnime = new Map<number, { item: AnimeSearchResultItem; airingAt: number }>();
+    const byAnime = new Map<number, { item: AnimeSearchResultItem; airingAt: number; episode: number }>();
     for (const s of data.Page.airingSchedules) {
       const m = s.media;
       if (m.countryOfOrigin !== "JP" || m.isAdult || m.format === "MUSIC") continue;
+      // Server 1 requires a valid MAL ID to play
+      if (!m.idMal || m.idMal <= 0) continue;
       if (excludeIds.has(m.id) || collectedIds.has(m.id)) continue;
       const existing = byAnime.get(m.id);
       if (!existing || s.airingAt > existing.airingAt) {
-        byAnime.set(m.id, { item: toSearchItem(m), airingAt: s.airingAt });
+        byAnime.set(m.id, {
+          item: toSearchItem(m, s.episode, s.airingAt),
+          airingAt: s.airingAt,
+          episode: s.episode
+        });
       }
     }
 
@@ -744,6 +849,12 @@ export async function getLatestReleases(
     if (filters?.genre) batch = batch.filter((e) => e.item.genres?.includes(filters.genre as string));
     if (filters?.year) batch = batch.filter((e) => e.item.season_year === filters.year);
     if (filters?.format) batch = batch.filter((e) => e.item.format === filters.format);
+
+    // Exclude releases that cannot be played on Server 1
+    const playableFlags = await Promise.all(
+      batch.map((e) => isServer1Playable(e.item.mal_id, e.episode))
+    );
+    batch = batch.filter((_, idx) => playableFlags[idx]);
     batch.sort((a, b) => b.airingAt - a.airingAt);
 
     for (const e of batch) {
@@ -759,6 +870,7 @@ export async function getLatestReleases(
     nextRawPage: page
   };
 }
+
 
 export interface AiringScheduleEntry {
   id: number;

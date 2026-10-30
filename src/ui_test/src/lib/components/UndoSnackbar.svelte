@@ -36,7 +36,7 @@
   {@const entry = action.current ?? action.previous}
   {@const title = entry ? displayTitle(entry.title_english, entry.title_romaji) : ""}
   <div
-    class="fixed bottom-20 left-1/2 z-[80] flex w-[min(92vw,26rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-2xl backdrop-blur"
+    class="fixed top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-[80] flex w-[min(92vw,26rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-2xl backdrop-blur"
     role="status"
     aria-live="polite"
   >
@@ -74,7 +74,7 @@
   {@const action = likes.lastAction}
   {@const title = displayTitle(action.item.title_english, action.item.title_romaji)}
   <div
-    class="fixed bottom-5 left-1/2 z-[80] flex w-[min(92vw,26rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-2xl backdrop-blur"
+    class="fixed top-[calc(env(safe-area-inset-top)+5rem)] left-1/2 z-[80] flex w-[min(92vw,26rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-2xl backdrop-blur"
     role="status"
     aria-live="polite"
   >

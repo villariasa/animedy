@@ -62,6 +62,9 @@ export interface AnimeSearchResultItem {
   score?: number | null;
   genres?: string[];
   latest_episode?: number | null;
+  airing_at?: number | null;
+  episode_thumbnail?: string | null;
+  episode_title?: string | null;
   trailer_thumbnail?: string | null;
   trailer_id?: string | null;
 }
@@ -118,6 +121,8 @@ export interface AnimeDetails {
   season_label: string | null;
   arc_name: string | null;
   trailer_id?: string | null;
+  total_episodes?: number | null;
+  next_airing_episode?: { episode: number; airing_at: number } | null;
 }
 
 export interface AnimeDetailsResponse {

@@ -1,6 +1,7 @@
 // Thin wrapper around the browser Notification API, so a new episode can
-// reach the user even when the tab isn't focused. Permission is only ever
-// requested from an explicit user action (Settings toggle) — never on load.
+// reach the user even when the tab isn't focused. Permission is requested
+// from an explicit user action — either the Settings toggle, or the one-time
+// onload prompt (NotificationPrompt.svelte) — never silently.
 const NOTIFIED_KEY = "animedy.notified_episodes";
 const NOTIFIED_MAX = 200;
 

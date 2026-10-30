@@ -7,6 +7,7 @@
   import { router } from "$lib/router.svelte";
   import { likes } from "$lib/stores/likes.svelte";
   import { ambience } from "$lib/stores/ambience.svelte";
+  import AddToListButton from "$lib/components/AddToListButton.svelte";
   import { onDestroy } from "svelte";
 
   let { items = [] }: { items: AnimeSearchResultItem[] } = $props();
@@ -295,6 +296,12 @@
               <path d="m9.653 16.915-.005-.003-.019-.01a20.759 20.759 0 0 1-1.16-1.107 20.373 20.373 0 0 1-3.69-4.836A7.472 7.472 0 0 1 4 7.5C4 4.462 6.462 2 9.5 2a5.498 5.498 0 0 1 4.298 2.043A5.498 5.498 0 0 1 18.5 7.5c0 1.258-.337 2.44-.925 3.46a20.373 20.373 0 0 1-3.69 4.836 20.758 20.758 0 0 1-1.16 1.107l-.02.01-.005.003h-.002a.75.75 0 0 1-.698 0l-.002-.003Z" />
             </svg>
           </button>
+
+          <!-- Add to List Button -->
+          <AddToListButton
+            anime={currentItem}
+            buttonClass="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur-md transition-all hover:bg-white/20 active:scale-90"
+          />
         </div>
       </div>
 

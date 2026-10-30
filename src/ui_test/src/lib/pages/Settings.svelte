@@ -376,7 +376,7 @@
         </span>
         <div>
           <h2 class="text-sm font-bold tracking-tight text-foreground">Notifications</h2>
-          <p class="text-xs text-muted-foreground">Get a browser notification when a liked anime's new episode airs — even if this tab isn't open</p>
+          <p class="text-xs text-muted-foreground">Get a browser notification when a new episode airs for anything in Liked or My List — even if this tab isn't open</p>
         </div>
       </div>
 
