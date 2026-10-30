@@ -344,6 +344,20 @@
 
   let hlsInstance: Hls | null = null;
 
+  function playForAutoPlay(): void {
+    const p = video?.play();
+    if (p !== undefined) {
+      p.catch(() => {
+        // Unmuted autoplay blocked by browser, auto-mute and retry.
+        if (video) {
+          video.muted = true;
+          muted = true;
+          void video.play().catch(() => undefined);
+        }
+      });
+    }
+  }
+
   // Stream source loader with HLS playlist support (.m3u8)
   $effect(() => {
     const src = currentSrc;
@@ -352,6 +366,7 @@
     if (src.includes(".m3u8")) {
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = src;
+        if (autoPlay) playForAutoPlay();
       } else if (Hls.isSupported()) {
         if (hlsInstance) {
           hlsInstance.destroy();
@@ -359,6 +374,9 @@
         hlsInstance = new Hls({ enableWorker: true });
         hlsInstance.loadSource(src);
         hlsInstance.attachMedia(video);
+        if (autoPlay) {
+          hlsInstance.on(Hls.Events.MANIFEST_PARSED, playForAutoPlay);
+        }
       }
     } else {
       if (hlsInstance) {
@@ -366,6 +384,7 @@
         hlsInstance = null;
       }
       video.src = src;
+      if (autoPlay) playForAutoPlay();
     }
 
     return () => {

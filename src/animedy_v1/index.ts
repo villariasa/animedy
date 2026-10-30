@@ -17,6 +17,8 @@ import { continueWatchingRoutes } from "./routes/continueWatching.js";
 import { watchNextRoutes } from "./routes/watchNext.js";
 import { historyRoutes } from "./routes/history.js";
 import { anilistProxyRoutes } from "./routes/anilistProxy.js";
+import { server3Routes } from "./routes/server3.js";
+import { server4Routes } from "./routes/server4.js";
 import { DOCS_PAGE_HTML } from "./lib/docsPage.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -36,6 +38,8 @@ app.route("/api/continue-watching", continueWatchingRoutes);
 app.route("/api/watch-next", watchNextRoutes);
 app.route("/api/history", historyRoutes);
 app.route("/api/proxy/anilist", anilistProxyRoutes);
+app.route("/api/server3", server3Routes);
+app.route("/api/server4", server4Routes);
 
 // Lists all Swagger JSON definitions available in src/jsondef/.
 app.post("/docs/index", async (context) => {

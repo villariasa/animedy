@@ -1,13 +1,24 @@
 <script lang="ts">
   import { ApiError } from "$lib/api/client";
-  import { buildEpisodes, getAnimeDetails, getEpisodeMedia } from "$lib/api/anilist";
+  import {
+    buildEpisodes,
+    getAnimeDetails,
+    getEpisodeMedia,
+  } from "$lib/api/anilist";
   import type { AnimeDetails, EpisodeListItem } from "$lib/api/types";
   import { getSkipSegments } from "$lib/api/aniskip";
   import { getCached, putCached } from "$lib/db/local";
-  import { progressKey, saveLocalProgress, getLocalProgressFor, getLocalProgressForAnime } from "$lib/db/local";
+  import {
+    progressKey,
+    saveLocalProgress,
+    getLocalProgressFor,
+    getLocalProgressForAnime,
+  } from "$lib/db/local";
   import { displayTitle, formatAirDate, stripHtml } from "$lib/format";
   import { router } from "$lib/router.svelte";
   import { settings } from "$lib/stores/settings.svelte";
+  import Player from "$lib/components/player/Player.svelte";
+  import { resolveServer3Stream, Server3Error } from "$lib/api/server3";
 
   // episodeId in the route is the episode NUMBER — streams come from embed
   // providers keyed by (anilist id, episode number). No backend, no accounts.
@@ -44,7 +55,9 @@
   $effect(() => {
     const epNum = episodeId;
     if (epNum > 0 && drawerChunks.length > 0) {
-      const matchingIdx = drawerChunks.findIndex((c) => epNum >= c.start && epNum <= c.end);
+      const matchingIdx = drawerChunks.findIndex(
+        (c) => epNum >= c.start && epNum <= c.end,
+      );
       if (matchingIdx >= 0) {
         drawerChunkIndex = matchingIdx;
       }
@@ -54,7 +67,11 @@
   const displayedDrawerEpisodes = $derived.by(() => {
     const q = drawerQuery.trim();
     if (q) {
-      return episodes.filter((ep) => String(ep.episode_number).includes(q) || ep.title?.toLowerCase().includes(q.toLowerCase()));
+      return episodes.filter(
+        (ep) =>
+          String(ep.episode_number).includes(q) ||
+          ep.title?.toLowerCase().includes(q.toLowerCase()),
+      );
     }
     if (drawerChunks.length > 0) {
       const chunk = drawerChunks[drawerChunkIndex] ?? drawerChunks[0];
@@ -65,19 +82,60 @@
     return episodes;
   });
 
-  type StreamServer = "embed_animekai" | "embed_animix" | "embed_videasy" | "embed_vidsrc_cc";
-  let selectedServer = $state<StreamServer>("embed_animekai");
+  type StreamServer =
+    | "embed_animekai"
+    | "embed_animix"
+    | "native_resolver"
+    | "embed_vidsrc_cc";
+
+  const SERVER_STORAGE_KEY = "animedy_preferred_server";
+
+  function getStoredServer(): StreamServer {
+    try {
+      const saved = localStorage.getItem(SERVER_STORAGE_KEY);
+      if (
+        saved === "embed_animekai" ||
+        saved === "embed_animix" ||
+        saved === "native_resolver" ||
+        saved === "embed_vidsrc_cc"
+      ) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return "embed_animekai";
+  }
+
+  function setServer(server: StreamServer): void {
+    selectedServer = server;
+    try {
+      localStorage.setItem(SERVER_STORAGE_KEY, server);
+    } catch {
+      // ignore
+    }
+  }
+
+  let selectedServer = $state<StreamServer>(getStoredServer());
   let frameBox = $state<HTMLDivElement | null>(null);
 
-  // Server 2: animixplay.ba episode page, cropped so ONLY the player region is
+  // Server 2: animepahe.ws episode page, cropped so ONLY the player region is
   // visible (their player is referer-locked, so the page itself is framed).
-  // Slug is derived from the title; existence is confirmed via their CORS-open
-  // WordPress REST API before the server is offered.
+  // Slug is derived from the title/series via their CORS-open WordPress REST API
+  // (/wp-json/wp/v2/anime_episode and anime_series).
   let animixUrl = $state<string | null>(null);
   let cropW = $state(0);
-  // Measured at 1366px viewport: player box x=28 y=435 w=956 (h≈538 shown).
-  const AMX = { viewport: 1366, x: 28, y: 435, w: 956 };
+  // Measured on 1366px desktop viewport:
+  // .theater-wrapper max-width: 980px, centered -> left offset (1366-980)/2 = 193 + 16px padding = 209px.
+  // player width: 980 - 32 = 948px (16:9 ratio -> 533px height).
+  // y: 115 shifts past the top pink announcement banner completely and pulls
+  // the subtitle lines at the bottom fully into the viewport.
+  const AMX = { viewport: 1366, x: 185, y: 115, w: 996 };
   const amxScale = $derived(cropW > 0 ? cropW / AMX.w : 1);
+
+  // In-memory caches for fast lookup across episodes
+  const animepaheUrlCache = new Map<string, string | null>();
+  const animepaheSeriesCache = new Map<number, string>();
 
   function slugify(title: string): string {
     return title
@@ -88,42 +146,217 @@
   }
 
   async function findAnimixEpisode(epNum: number): Promise<string | null> {
-    const candidates = [...new Set(
-      [anime?.title_english, anime?.title_romaji]
-        .filter((t): t is string => !!t)
-        .map((t) => `${slugify(t)}-episode-${epNum}-english-subbed`)
-    )];
-    for (const slug of candidates) {
+    if (!anime) return null;
+    const aId = anime.id ?? animeId;
+    const cacheKey = `${aId}-${epNum}`;
+    if (animepaheUrlCache.has(cacheKey)) {
+      return animepaheUrlCache.get(cacheKey) ?? null;
+    }
+
+    const rawTitles = [
+      anime.title_english,
+      anime.title_romaji,
+      ...(anime.synonyms ?? []),
+    ].filter((t): t is string => Boolean(t && t.trim()));
+    const uniqueTitles = [...new Set(rawTitles)];
+
+    // 0. If we already know the series slug for this anime, check that episode slug first
+    const cachedSeriesSlug = animepaheSeriesCache.get(aId);
+    if (cachedSeriesSlug) {
       try {
+        const epSlug = `${cachedSeriesSlug}-${epNum}`;
         const res = await fetch(
-          `https://animixplay.ba/wp-json/wp/v2/posts?slug=${slug}&_fields=link`
+          `https://animepahe.ws/wp-json/wp/v2/anime_episode?slug=${encodeURIComponent(epSlug)}&_fields=link`,
         );
         if (res.ok) {
-          const posts = (await res.json()) as Array<{ link: string }>;
-          if (posts.length > 0) {
-            return posts[0]?.link ?? `https://animixplay.ba/${slug}/`;
+          const posts = (await res.json()) as Array<{ link?: string }>;
+          if (posts.length > 0 && posts[0]?.link) {
+            animepaheUrlCache.set(cacheKey, posts[0].link);
+            return posts[0].link;
           }
         }
       } catch {
-        // network/CORS hiccup — try next candidate
+        // network/CORS hiccup — proceed with full lookup
       }
     }
+
+    // 1. Direct candidate slugs
+    const candidateSlugs = new Set<string>();
+    for (const t of uniqueTitles) {
+      const s = slugify(t);
+      if (s) {
+        candidateSlugs.add(`${s}-${epNum}`);
+        candidateSlugs.add(`${s}-episode-${epNum}`);
+      }
+    }
+
+    for (const slug of candidateSlugs) {
+      try {
+        const res = await fetch(
+          `https://animepahe.ws/wp-json/wp/v2/anime_episode?slug=${encodeURIComponent(slug)}&_fields=link`,
+        );
+        if (res.ok) {
+          const posts = (await res.json()) as Array<{ link?: string }>;
+          if (posts.length > 0 && posts[0]?.link) {
+            animepaheUrlCache.set(cacheKey, posts[0].link);
+            return posts[0].link;
+          }
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+
+    // 2. Search anime_series (matches hash-suffixed series like solo-leveling-ilh08)
+    for (const t of uniqueTitles) {
+      const clean = t.replace(/[^a-zA-Z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+      if (!clean) continue;
+
+      const queries = [clean];
+      const parts = t.split(/[-:—–]/).map((p) => p.trim()).filter((p) => p.length > 3);
+      if (parts.length > 1) {
+        queries.push(...parts);
+      }
+
+      for (const q of queries) {
+        try {
+          const sRes = await fetch(
+            `https://animepahe.ws/wp-json/wp/v2/anime_series?search=${encodeURIComponent(q)}&per_page=6&_fields=id,slug,title`,
+          );
+          if (sRes.ok) {
+            const seriesList = (await sRes.json()) as Array<{
+              id: number;
+              slug: string;
+              title?: { rendered?: string };
+            }>;
+            const qTokens = q.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+
+            for (const s of seriesList) {
+              const sTitle = s.title?.rendered?.toLowerCase() ?? "";
+              const sSlug = s.slug.toLowerCase();
+              const matches = qTokens.filter((tok) => sTitle.includes(tok) || sSlug.includes(tok));
+              if (matches.length >= Math.min(2, qTokens.length)) {
+                animepaheSeriesCache.set(aId, s.slug);
+                const epSlug = `${s.slug}-${epNum}`;
+                const epRes = await fetch(
+                  `https://animepahe.ws/wp-json/wp/v2/anime_episode?slug=${encodeURIComponent(epSlug)}&_fields=link`,
+                );
+                if (epRes.ok) {
+                  const epPosts = (await epRes.json()) as Array<{ link?: string }>;
+                  if (epPosts.length > 0 && epPosts[0]?.link) {
+                    animepaheUrlCache.set(cacheKey, epPosts[0].link);
+                    return epPosts[0].link;
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore network hiccups
+        }
+      }
+    }
+
+    // 3. Fallback: Search anime_episode directly
+    for (const t of uniqueTitles) {
+      const clean = t.replace(/[^a-zA-Z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+      if (!clean) continue;
+      try {
+        const epRes = await fetch(
+          `https://animepahe.ws/wp-json/wp/v2/anime_episode?search=${encodeURIComponent(clean)}&per_page=20&_fields=id,slug,link,title`,
+        );
+        if (epRes.ok) {
+          const episodes = (await epRes.json()) as Array<{
+            id: number;
+            slug: string;
+            link?: string;
+            title?: { rendered?: string };
+          }>;
+          const epMatch = episodes.find((e) => {
+            if (e.slug.endsWith(`-${epNum}`)) return true;
+            const tr = e.title?.rendered ?? "";
+            return (
+              tr.endsWith(`&#8211; ${epNum}`) ||
+              tr.endsWith(`– ${epNum}`) ||
+              tr.endsWith(`- ${epNum}`) ||
+              tr.endsWith(` ${epNum}`)
+            );
+          });
+          if (epMatch?.link) {
+            animepaheUrlCache.set(cacheKey, epMatch.link);
+            return epMatch.link;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    animepaheUrlCache.set(cacheKey, null);
     return null;
   }
 
-  const animeTitle = $derived(anime ? displayTitle(anime.title_english, anime.title_romaji) : "");
-  const currentEpisode = $derived(episodes.find((e) => e.episode_number === episodeId));
-  const prevEpisode = $derived(episodes.find((e) => e.episode_number === episodeId - 1));
-  const nextEpisode = $derived(episodes.find((e) => e.episode_number === episodeId + 1));
+  const animeTitle = $derived(
+    anime ? displayTitle(anime.title_english, anime.title_romaji) : "",
+  );
+  const currentEpisode = $derived(
+    episodes.find((e) => e.episode_number === episodeId),
+  );
+  const prevEpisode = $derived(
+    episodes.find((e) => e.episode_number === episodeId - 1),
+  );
+  const nextEpisode = $derived(
+    episodes.find((e) => e.episode_number === episodeId + 1),
+  );
   const episodeLabel = $derived(
     currentEpisode
       ? `Episode ${currentEpisode.episode_number}${currentEpisode.title ? ` · ${currentEpisode.title}` : ""}`
-      : `Episode ${episodeId}`
+      : `Episode ${episodeId}`,
   );
   // Server 1 is the SAME player animekai.com.ro embeds (gogoanime.me.uk wraps
   // megaplay with the right referer; keyed by MAL id + episode + sub, autostarts).
   // Verified 2026-10-28 to serve a frameable player (no X-Frame-Options).
   // Others key by AniList id. vidsrc.pm/.icu, autoembed, multiembed removed (dead).
+  // Server 4: 9anime.si stream resolver + multi-layer ad-blocker proxy
+  let server4Url = $state<string | null>(null);
+  let server4Loading = $state(false);
+
+  async function loadServer4Stream(aId: number, epNum: number): Promise<void> {
+    if (!anime) return;
+    server4Url = null;
+    server4Loading = true;
+    try {
+      const titles = [
+        anime.title_english,
+        anime.title_romaji,
+        ...(anime.synonyms ?? []),
+      ].filter((t): t is string => Boolean(t && t.trim()));
+
+      const res = await fetch("/api/server4/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          anime_id: aId,
+          episode_number: epNum,
+          titles,
+        }),
+      });
+
+      if (res.ok) {
+        const body = (await res.json()) as { data?: { embed_url?: string } };
+        if (body.data?.embed_url && animeId === aId && episodeId === epNum) {
+          server4Url = body.data.embed_url;
+        }
+      }
+    } catch {
+      // fallback to default
+    } finally {
+      if (animeId === aId && episodeId === epNum) {
+        server4Loading = false;
+      }
+    }
+  }
+
   const malId = $derived(anime?.mal_id ?? null);
   const serverEmbedUrls = $derived<Record<StreamServer, string>>({
     // Server 1 goes through our own wrapper page whose URL contains
@@ -132,8 +365,48 @@
     // NO ad script for them. Ad-free without sandbox, so no detector fires.
     embed_animekai: `/anichi.to.html?mal=${malId ?? 0}&ep=${episodeId}&cat=sub`,
     embed_animix: animixUrl ?? "",
-    embed_videasy: `https://player.videasy.net/anime/${animeId}/${episodeId}`,
-    embed_vidsrc_cc: `https://vidsrc.cc/v2/embed/anime/${animeId}/${episodeId}/sub`
+    native_resolver: "",
+    embed_vidsrc_cc: server4Url ?? "",
+  });
+
+  $effect(() => {
+    const aId = animeId;
+    const epNum = episodeId;
+    if (selectedServer === "embed_vidsrc_cc" && anime) {
+      void loadServer4Stream(aId, epNum);
+    }
+  });
+
+  // Server 3: real stream resolver (@consumet/extensions via our own
+  // backend) instead of a third-party iframe embed — resolves straight to
+  // an actual .m3u8/mp4 source played natively by the Player component.
+  let server3Stream = $state<{ url: string; subtitles: { lang: string; url: string }[] } | null>(null);
+  let server3Loading = $state(false);
+  let server3Error = $state<string | null>(null);
+
+  async function loadServer3Stream(aId: number, epNum: number): Promise<void> {
+    server3Loading = true;
+    server3Error = null;
+    server3Stream = null;
+    try {
+      const result = await resolveServer3Stream(aId, epNum);
+      server3Stream = { url: result.streamUrl, subtitles: result.subtitles };
+    } catch (err) {
+      server3Error =
+        err instanceof Server3Error
+          ? err.message
+          : "Failed to load this stream. Please try another server.";
+    } finally {
+      server3Loading = false;
+    }
+  }
+
+  $effect(() => {
+    const aId = animeId;
+    const epNum = episodeId;
+    if (selectedServer === "native_resolver") {
+      void loadServer3Stream(aId, epNum);
+    }
   });
 
   // User-gesture fullscreen for the frame itself ("auto" fullscreen without a
@@ -149,7 +422,9 @@
   // Quick-access toggles mirrored from Settings — persisted immediately
   // (no separate save step) since this bar has no form/submit of its own.
   function toggleAutoSkip(): void {
-    const next = !(settings.current.auto_skip_intro && settings.current.auto_skip_outro);
+    const next = !(
+      settings.current.auto_skip_intro && settings.current.auto_skip_outro
+    );
     void settings.save({ auto_skip_intro: next, auto_skip_outro: next });
     sendSkipData();
   }
@@ -199,6 +474,28 @@
   const effectiveIntro = $derived(customIntro ?? skipIntroState);
   const effectiveOutro = $derived(customOutro ?? skipOutroState);
 
+  // Skip windows in the shape Player.svelte's native auto-skip effect expects.
+  const nativeSkipSegments = $derived.by(() => {
+    const segs: { skip_type: "intro" | "outro"; start_seconds: number; end_seconds: number; source: "aniskip" | "manual" }[] = [];
+    if (effectiveIntro) {
+      segs.push({
+        skip_type: "intro",
+        start_seconds: effectiveIntro[0],
+        end_seconds: effectiveIntro[1],
+        source: customIntro ? "manual" : "aniskip",
+      });
+    }
+    if (effectiveOutro) {
+      segs.push({
+        skip_type: "outro",
+        start_seconds: effectiveOutro[0],
+        end_seconds: effectiveOutro[1],
+        source: customOutro ? "manual" : "aniskip",
+      });
+    }
+    return segs;
+  });
+
   function sendToPlayer(obj: Record<string, unknown>): void {
     playerFrame?.contentWindow?.postMessage(JSON.stringify(obj), "*");
   }
@@ -206,15 +503,20 @@
   function sendSkipData(): void {
     sendToPlayer({
       cmd: "SKP_DATA",
-      value: { intro: effectiveIntro ?? undefined, outro: effectiveOutro ?? undefined },
-      auto: settings.current.auto_skip_intro || settings.current.auto_skip_outro
+      value: {
+        intro: effectiveIntro ?? undefined,
+        outro: effectiveOutro ?? undefined,
+      },
+      auto:
+        settings.current.auto_skip_intro || settings.current.auto_skip_outro,
     });
   }
 
   async function saveCustomSkip(): Promise<void> {
-    await putCached(`customskip:${animeId}`, { intro: customIntro, outro: customOutro }).catch(
-      () => undefined
-    );
+    await putCached(`customskip:${animeId}`, {
+      intro: customIntro,
+      outro: customOutro,
+    }).catch(() => undefined);
     sendSkipData();
   }
 
@@ -252,7 +554,11 @@
     void saveCustomSkip();
   }
 
-  async function saveRealProgress(pos: number, dur: number, completed: boolean): Promise<void> {
+  async function saveRealProgress(
+    pos: number,
+    dur: number,
+    completed: boolean,
+  ): Promise<void> {
     await saveLocalProgress({
       episode_id: progressKey(animeId, episodeId),
       anime_id: animeId,
@@ -264,7 +570,7 @@
       title_romaji: anime?.title_romaji ?? null,
       episode_number: episodeId,
       episode_title: currentEpisode?.title ?? `Episode ${episodeId}`,
-      cover_image: anime?.cover_image ?? null
+      cover_image: anime?.cover_image ?? null,
     }).catch(() => undefined);
   }
 
@@ -281,11 +587,20 @@
   $effect(() => {
     void episodeId;
     const server = selectedServer;
+    // Server 4 routes through the SAME anichi.to.html bridge as Server 1
+    // whenever 9anime.si resolves to a megaplay.buzz stream — it relays the
+    // identical PLAYER_READY/GET_TIME/SEEK/SKP_DATA postMessage protocol, so
+    // autoplay/auto-skip/auto-next/resume all work there too. The other
+    // server4 path (/api/server4/player, raw third-party player HTML with no
+    // bridge) gets none of this — there's no protocol to speak to it.
+    const usesAnichiBridge =
+      server === "embed_animekai" ||
+      (server === "embed_vidsrc_cc" && Boolean(server4Url?.includes("anichi.to.html")));
     endedFired = false;
     pollCount = 0;
     realPos = 0;
     realDur = 0;
-    if (server !== "embed_animekai") {
+    if (!usesAnichiBridge) {
       return;
     }
     const onMsg = (ev: MessageEvent) => {
@@ -306,6 +621,9 @@
         if (resumePos > 30) {
           sendToPlayer({ cmd: "SEEK", value: resumePos });
           resumePos = 0;
+        }
+        if (settings.current.autoplay) {
+          sendToPlayer({ cmd: "PLAY" });
         }
       } else if (msg.event === "CURRENT_TIME") {
         const time = Number(msg.time) || 0;
@@ -348,7 +666,12 @@
     // (animeId*10000+ep) instead of the episode number — auto-correct them.
     if (epNum > 10000 && Math.floor(epNum / 10000) === aId) {
       router.go(`/watch/${aId}/${epNum % 10000}`);
-    } else if (Number.isFinite(aId) && aId > 0 && Number.isFinite(epNum) && epNum > 0) {
+    } else if (
+      Number.isFinite(aId) &&
+      aId > 0 &&
+      Number.isFinite(epNum) &&
+      epNum > 0
+    ) {
       loadEpisode(aId, epNum);
     }
   });
@@ -356,7 +679,9 @@
   async function refreshWatched(aId: number): Promise<void> {
     const rows = await getLocalProgressForAnime(aId).catch(() => []);
     watchedEpisodeNumbers = new Set(
-      rows.filter((r) => r.completed && r.episode_number).map((r) => r.episode_number as number)
+      rows
+        .filter((r) => r.completed && r.episode_number)
+        .map((r) => r.episode_number as number),
     );
   }
 
@@ -377,7 +702,7 @@
         anime.title_english || anime.title_romaji,
         anime.start_date,
         anime.season_year,
-        anime.episode_count
+        anime.episode_count,
       ).then((media) => {
         episodes = episodes.map((ep) => {
           const info = media.get(ep.episode_number);
@@ -385,16 +710,28 @@
             ...ep,
             thumbnail: info?.thumbnail ?? ep.thumbnail,
             title: info?.title ?? ep.title ?? `Episode ${ep.episode_number}`,
-            air_date: info?.air_date ?? ep.air_date
+            air_date: info?.air_date ?? ep.air_date,
           };
         });
       });
       animixUrl = await findAnimixEpisode(epNum);
-      if (anime.mal_id === null && selectedServer === "embed_animekai") {
-        selectedServer = animixUrl ? "embed_animix" : "embed_videasy";
-      }
-      if (selectedServer === "embed_animix" && !animixUrl) {
-        selectedServer = anime.mal_id !== null ? "embed_animekai" : "embed_videasy";
+      void loadServer4Stream(aId, epNum);
+      const preferred = getStoredServer();
+      if (preferred === "embed_animix") {
+        selectedServer = animixUrl
+          ? "embed_animix"
+          : anime.mal_id !== null
+            ? "embed_animekai"
+            : "native_resolver";
+      } else if (preferred === "embed_animekai") {
+        selectedServer =
+          anime.mal_id !== null
+            ? "embed_animekai"
+            : animixUrl
+              ? "embed_animix"
+              : "native_resolver";
+      } else {
+        selectedServer = preferred;
       }
       // Intro/outro windows from AniSkip for the player bridge.
       skipIntroState = null;
@@ -403,20 +740,26 @@
         const segs = await getSkipSegments(
           anime.mal_id,
           epNum,
-          anime.episode_duration ? anime.episode_duration * 60 : 0
+          anime.episode_duration ? anime.episode_duration * 60 : 0,
         ).catch(() => []);
         for (const seg of segs) {
-          if (seg.skip_type === "intro") skipIntroState = [seg.start_seconds, seg.end_seconds];
-          if (seg.skip_type === "outro") skipOutroState = [seg.start_seconds, seg.end_seconds];
+          if (seg.skip_type === "intro")
+            skipIntroState = [seg.start_seconds, seg.end_seconds];
+          if (seg.skip_type === "outro")
+            skipOutroState = [seg.start_seconds, seg.end_seconds];
         }
       }
-      const custom = await getCached<{ intro: SkipPair | null; outro: SkipPair | null }>(
-        `customskip:${aId}`
-      ).catch(() => undefined);
+      const custom = await getCached<{
+        intro: SkipPair | null;
+        outro: SkipPair | null;
+      }>(`customskip:${aId}`).catch(() => undefined);
       customIntro = custom?.intro ?? null;
       customOutro = custom?.outro ?? null;
-      const existing = await getLocalProgressFor(aId, epNum).catch(() => undefined);
-      resumePos = existing && !existing.completed ? existing.position_seconds : 0;
+      const existing = await getLocalProgressFor(aId, epNum).catch(
+        () => undefined,
+      );
+      resumePos =
+        existing && !existing.completed ? existing.position_seconds : 0;
       await registerInHistory(aId, epNum);
       await refreshWatched(aId);
     } catch (err) {
@@ -428,8 +771,12 @@
 
   // Record the watch in IndexedDB so History / Continue Watching work
   async function registerInHistory(aId: number, epNum: number): Promise<void> {
-    const existing = await getLocalProgressFor(aId, epNum).catch(() => undefined);
-    const durationSeconds = anime?.episode_duration ? anime.episode_duration * 60 : 1440;
+    const existing = await getLocalProgressFor(aId, epNum).catch(
+      () => undefined,
+    );
+    const durationSeconds = anime?.episode_duration
+      ? anime.episode_duration * 60
+      : 1440;
     await saveLocalProgress({
       episode_id: progressKey(aId, epNum),
       anime_id: aId,
@@ -441,12 +788,14 @@
       title_romaji: anime?.title_romaji ?? null,
       episode_number: epNum,
       episode_title: currentEpisode?.title ?? `Episode ${epNum}`,
-      cover_image: anime?.cover_image ?? null
+      cover_image: anime?.cover_image ?? null,
     }).catch(() => undefined);
   }
 
-  async function markWatched(): Promise<void> {
-    const durationSeconds = anime?.episode_duration ? anime.episode_duration * 60 : 1440;
+  async function saveWatchedComplete(): Promise<void> {
+    const durationSeconds = anime?.episode_duration
+      ? anime.episode_duration * 60
+      : 1440;
     await saveLocalProgress({
       episode_id: progressKey(animeId, episodeId),
       anime_id: animeId,
@@ -458,11 +807,26 @@
       title_romaji: anime?.title_romaji ?? null,
       episode_number: episodeId,
       episode_title: currentEpisode?.title ?? `Episode ${episodeId}`,
-      cover_image: anime?.cover_image ?? null
+      cover_image: anime?.cover_image ?? null,
     }).catch(() => undefined);
     watchedEpisodeNumbers = new Set(watchedEpisodeNumbers).add(episodeId);
+  }
+
+  // Manual "Mark Watched" button — always advances regardless of auto-next.
+  async function markWatched(): Promise<void> {
+    await saveWatchedComplete();
     if (nextEpisode) {
       goToEpisode(nextEpisode.episode_number);
+    }
+  }
+
+  // Native <Player> (Server 3) "ended" event — only advances when the user
+  // has Auto Next enabled, mirroring the Server 1 bridge's onEpisodeEnded.
+  async function onNativePlayerEnded(): Promise<void> {
+    await saveWatchedComplete();
+    if (settings.current.auto_next && nextEpisode) {
+      goToEpisode(nextEpisode.episode_number);
+      maybeAutoFullscreen();
     }
   }
 
@@ -500,9 +864,18 @@
     onclick={() => (isCinemaMode = false)}
     aria-label="Turn lights back on (Escape)"
   >
-    <div class="absolute top-4 right-6 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur transition-all hover:bg-white/20">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 text-amber-300">
-        <path d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2ZM10 15a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 15ZM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.657 5.404a.75.75 0 1 0-1.06-1.06l-1.061 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM6.464 14.596a.75.75 0 1 0-1.06-1.06l-1.06 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM18 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 18 10ZM5 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 5 10ZM14.596 14.596a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06ZM5.404 5.404a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06Z" />
+    <div
+      class="absolute top-4 right-6 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur transition-all hover:bg-white/20"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        class="h-4 w-4 text-amber-300"
+      >
+        <path
+          d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2ZM10 15a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 15ZM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.657 5.404a.75.75 0 1 0-1.06-1.06l-1.061 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM6.464 14.596a.75.75 0 1 0-1.06-1.06l-1.06 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM18 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 18 10ZM5 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 5 10ZM14.596 14.596a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06ZM5.404 5.404a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06Z"
+        />
       </svg>
       <span>Turn on lights (Esc)</span>
     </div>
@@ -511,14 +884,29 @@
 
 {#if loading}
   <div class="flex flex-col items-center justify-center py-28">
-    <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent shadow-lg"></div>
-    <p class="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading anime stream & episodes…</p>
+    <div
+      class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent shadow-lg"
+    ></div>
+    <p class="mt-4 text-sm font-medium text-muted-foreground animate-pulse">
+      Loading anime stream & episodes…
+    </p>
   </div>
 {:else if error}
   <div class="mx-auto max-w-md py-20 text-center">
-    <div class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/15 text-destructive mb-3">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-6 w-6">
-        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+    <div
+      class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/15 text-destructive mb-3"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        class="h-6 w-6"
+      >
+        <path
+          fill-rule="evenodd"
+          d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+          clip-rule="evenodd"
+        />
       </svg>
     </div>
     <p class="text-base font-bold text-foreground">{error}</p>
@@ -531,25 +919,39 @@
     </button>
   </div>
 {:else if anime}
-  <div class="mx-auto w-full max-w-[1720px] px-3 sm:px-6 lg:px-8 py-3 sm:py-5 flex flex-col gap-4 sm:gap-6">
+  <div
+    class="mx-auto w-full max-w-[1720px] px-3 sm:px-6 lg:px-8 py-3 sm:py-5 flex flex-col gap-4 sm:gap-6"
+  >
     <!-- Top Metadata Header Banner (Animedy Distinctive Aesthetic) -->
-    <header class="relative overflow-hidden rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5 shadow-lg backdrop-blur-xl">
+    <header
+      class="relative overflow-hidden rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5 shadow-lg backdrop-blur-xl"
+    >
       <!-- Ambient subtle background glow -->
-      <div class="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-primary/15 blur-3xl"></div>
+      <div
+        class="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-primary/15 blur-3xl"
+      ></div>
 
-      <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div
+        class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3"
+      >
         <!-- Title & Badges -->
         <div class="min-w-0 flex-1">
-          <h1 class="text-base sm:text-xl lg:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+          <h1
+            class="text-base sm:text-xl lg:text-2xl font-black tracking-tight text-white flex items-center gap-2"
+          >
             <span class="truncate">{animeTitle}</span>
             <span class="shrink-0 text-primary">·</span>
-            <span class="shrink-0 rounded-lg border border-primary/30 bg-primary/20 px-2.5 py-0.5 text-xs sm:text-sm font-extrabold text-primary shadow-xs">
+            <span
+              class="shrink-0 rounded-lg border border-primary/30 bg-primary/20 px-2.5 py-0.5 text-xs sm:text-sm font-extrabold text-primary shadow-xs"
+            >
               Episode {episodeId}
             </span>
           </h1>
 
           {#if currentEpisode?.title && currentEpisode.title !== `Episode ${episodeId}`}
-            <p class="mt-1 truncate text-xs sm:text-sm font-medium text-slate-300">
+            <p
+              class="mt-1 truncate text-xs sm:text-sm font-medium text-slate-300"
+            >
               {currentEpisode.title}
             </p>
           {/if}
@@ -562,41 +964,78 @@
               class="inline-flex items-center gap-1.5 rounded-lg bg-secondary/80 px-2.5 py-1 font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               title="Return to Anime overview"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 text-primary">
-                <path d="M4 3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H4Zm3 2h6v1H7V5Zm8 8H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1Z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="h-3.5 w-3.5 text-primary"
+              >
+                <path
+                  d="M4 3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H4Zm3 2h6v1H7V5Zm8 8H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1Z"
+                />
               </svg>
-              <span class="max-w-[180px] sm:max-w-[260px] truncate">{animeTitle}</span>
+              <span class="max-w-[180px] sm:max-w-[260px] truncate"
+                >{animeTitle}</span
+              >
             </a>
 
             <!-- Episode Pill -->
-            <span class="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/15 px-2.5 py-0.5 text-[11px] font-bold text-primary">
+            <span
+              class="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/15 px-2.5 py-0.5 text-[11px] font-bold text-primary"
+            >
               EP {episodeId}
             </span>
 
             <!-- Category / Audio Pill -->
-            <span class="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-emerald-400">
+            <span
+              class="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-emerald-400"
+            >
               SUB
             </span>
 
             {#if anime.format}
-              <span class="inline-flex items-center rounded-lg bg-muted/80 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span
+                class="inline-flex items-center rounded-lg bg-muted/80 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+              >
                 {anime.format}
               </span>
             {/if}
 
             {#if currentEpisode?.air_date}
-              <span class="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 opacity-70">
-                  <path fill-rule="evenodd" d="M5.75 2a.75.75 0 0 1 .75.75V4h7V2.75a.75.75 0 0 1 1.5 0V4h.25A2.75 2.75 0 0 1 18 6.75v8.5A2.75 2.75 0 0 1 15.25 18H4.75A2.75 2.75 0 0 1 2 15.25v-8.5A2.75 2.75 0 0 1 4.75 4H5V2.75A.75.75 0 0 1 5.75 2Zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75Z" clip-rule="evenodd" />
+              <span
+                class="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3 w-3 opacity-70"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M5.75 2a.75.75 0 0 1 .75.75V4h7V2.75a.75.75 0 0 1 1.5 0V4h.25A2.75 2.75 0 0 1 18 6.75v8.5A2.75 2.75 0 0 1 15.25 18H4.75A2.75 2.75 0 0 1 2 15.25v-8.5A2.75 2.75 0 0 1 4.75 4H5V2.75A.75.75 0 0 1 5.75 2Zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75Z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
                 {formatAirDate(currentEpisode.air_date)}
               </span>
             {/if}
 
             {#if anime.episode_duration}
-              <span class="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 opacity-70">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 0 0 1.06-1.06l-2.78-2.78V5Z" clip-rule="evenodd" />
+              <span
+                class="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3 w-3 opacity-70"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 0 0 1.06-1.06l-2.78-2.78V5Z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
                 ~{anime.episode_duration} min
               </span>
@@ -610,11 +1049,23 @@
             type="button"
             disabled={!prevEpisode}
             class="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-card/80 px-3 py-1.5 text-xs font-semibold text-foreground transition-all hover:bg-accent disabled:opacity-40 disabled:pointer-events-none"
-            onclick={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
+            onclick={() =>
+              prevEpisode && goToEpisode(prevEpisode.episode_number)}
             title="Previous Episode"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-3.5 w-3.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="2.5"
+              stroke="currentColor"
+              class="h-3.5 w-3.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M15.75 19.5 8.25 12l7.5-7.5"
+              />
             </svg>
             <span>Prev</span>
           </button>
@@ -623,12 +1074,24 @@
             type="button"
             disabled={!nextEpisode}
             class="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/25 disabled:opacity-40 disabled:pointer-events-none"
-            onclick={() => nextEpisode && goToEpisode(nextEpisode.episode_number)}
+            onclick={() =>
+              nextEpisode && goToEpisode(nextEpisode.episode_number)}
             title="Next Episode"
           >
             <span>Next</span>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-3.5 w-3.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="2.5"
+              stroke="currentColor"
+              class="h-3.5 w-3.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m8.25 4.5 7.5 7.5-7.5 7.5"
+              />
             </svg>
           </button>
         </div>
@@ -636,9 +1099,19 @@
     </header>
 
     <!-- Main Grid: Video Player (Left) + Episode Sidebar (Right) -->
-    <div class="grid grid-cols-1 {isTheaterMode ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-5 xl:gap-6 items-start">
+    <div
+      class="grid grid-cols-1 {isTheaterMode
+        ? 'lg:grid-cols-1'
+        : 'lg:grid-cols-12'} gap-5 xl:gap-6 items-start"
+    >
       <!-- LEFT: Video Player Stage + Under-Player Action Dock -->
-      <div class="{isTheaterMode ? 'w-full' : 'lg:col-span-8 xl:col-span-8 2xl:col-span-9'} flex flex-col gap-3 min-w-0 {isCinemaMode ? 'relative z-50' : ''}">
+      <div
+        class="{isTheaterMode
+          ? 'w-full'
+          : 'lg:col-span-8 xl:col-span-8 2xl:col-span-9'} flex flex-col gap-3 min-w-0 {isCinemaMode
+          ? 'relative z-50'
+          : ''}"
+      >
         <!-- Video Player Box (Properly contained, not blown up full screen before fullscreen!) -->
         <div class="relative">
           <div
@@ -653,10 +1126,72 @@
                 class="border-0"
                 style="width:{AMX.viewport}px;height:1200px;transform:scale({amxScale}) translate({-AMX.x}px, {-AMX.y}px);transform-origin:0 0;"
                 scrolling="no"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                 allowfullscreen
               ></iframe>
+            {:else if selectedServer === "native_resolver"}
+              {#if server3Loading}
+                <div class="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+                  <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+                  <p class="text-sm font-medium text-slate-300 animate-pulse">Resolving stream…</p>
+                </div>
+              {:else if server3Error}
+                <div class="flex h-full w-full flex-col items-center justify-center gap-2 bg-black px-6 text-center">
+                  <p class="text-sm font-bold text-destructive">{server3Error}</p>
+                  <button
+                    type="button"
+                    class="mt-2 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground"
+                    onclick={() => loadServer3Stream(animeId, episodeId)}
+                  >
+                    Retry
+                  </button>
+                </div>
+              {:else if server3Stream}
+                <Player
+                  streamUrl={server3Stream.url}
+                  subtitles={server3Stream.subtitles.map((s) => ({ lang: s.lang, label: s.lang, url: s.url }))}
+                  title={animeTitle}
+                  episodeLabel={episodeLabel}
+                  canPrev={Boolean(prevEpisode)}
+                  canNext={Boolean(nextEpisode)}
+                  skipSegments={nativeSkipSegments}
+                  autoSkipIntro={settings.current.auto_skip_intro}
+                  autoSkipOutro={settings.current.auto_skip_outro}
+                  autoFullscreen={settings.current.auto_fullscreen}
+                  autoPlay={settings.current.autoplay}
+                  onprev={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
+                  onnext={() => nextEpisode && goToEpisode(nextEpisode.episode_number)}
+                  onended={() => onNativePlayerEnded()}
+                />
+              {/if}
+            {:else if selectedServer === "embed_vidsrc_cc"}
+              {#if server4Loading}
+                <div class="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+                  <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+                  <p class="text-sm font-medium text-slate-300 animate-pulse">Connecting to 9Anime (Server 4)…</p>
+                  <p class="text-xs text-slate-500">Multi-layer ad blocker active</p>
+                </div>
+              {:else if !server4Url}
+                <div class="flex h-full w-full flex-col items-center justify-center gap-2 bg-black px-6 text-center">
+                  <p class="text-sm font-bold text-destructive">Could not load episode on 9Anime</p>
+                  <button
+                    type="button"
+                    class="mt-2 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground"
+                    onclick={() => loadServer4Stream(animeId, episodeId)}
+                  >
+                    Retry
+                  </button>
+                </div>
+              {:else}
+                <iframe
+                  bind:this={playerFrame}
+                  src={server4Url}
+                  title="{animeTitle} - {episodeLabel}"
+                  class="h-full w-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                  allowfullscreen
+                ></iframe>
+              {/if}
             {:else}
               <iframe
                 bind:this={playerFrame}
@@ -671,14 +1206,25 @@
         </div>
 
         <!-- Under-Player Controls & Server Switcher Dock -->
-        <div class="flex flex-col gap-2.5 rounded-2xl border border-border/70 bg-card/70 p-3 sm:p-3.5 backdrop-blur-xl shadow-md">
+        <div
+          class="flex flex-col gap-2.5 rounded-2xl border border-border/70 bg-card/70 p-3 sm:p-3.5 backdrop-blur-xl shadow-md"
+        >
           <!-- Top Dock Row: Video Servers and Viewing Utilities -->
           <div class="flex flex-wrap items-center justify-between gap-3">
             <!-- Video Servers Selector -->
             <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <span class="inline-flex items-center gap-1.5 text-xs font-bold text-foreground pr-1">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 text-primary">
-                  <path d="M4.464 3.162A2 2 0 0 1 6.28 2h7.44a2 2 0 0 1 1.816 1.162l1.968 4.29A2 2 0 0 1 17.5 8.442V15a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V8.442a2 2 0 0 1-.004-.99l1.968-4.29ZM14.75 9a.75.75 0 0 0-.75.75v.008a.75.75 0 0 0 .75.75h.008a.75.75 0 0 0 .75-.75V9.75a.75.75 0 0 0-.75-.75h-.008ZM12 9.75A.75.75 0 0 1 12.75 9h.008a.75.75 0 0 1 .75.75v.008a.75.75 0 0 1-.75.75H12.75A.75.75 0 0 1 12 9.75v-.008Z" />
+              <span
+                class="inline-flex items-center gap-1.5 text-xs font-bold text-foreground pr-1"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3.5 w-3.5 text-primary"
+                >
+                  <path
+                    d="M4.464 3.162A2 2 0 0 1 6.28 2h7.44a2 2 0 0 1 1.816 1.162l1.968 4.29A2 2 0 0 1 17.5 8.442V15a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V8.442a2 2 0 0 1-.004-.99l1.968-4.29ZM14.75 9a.75.75 0 0 0-.75.75v.008a.75.75 0 0 0 .75.75h.008a.75.75 0 0 0 .75-.75V9.75a.75.75 0 0 0-.75-.75h-.008ZM12 9.75A.75.75 0 0 1 12.75 9h.008a.75.75 0 0 1 .75.75v.008a.75.75 0 0 1-.75.75H12.75A.75.75 0 0 1 12 9.75v-.008Z"
+                  />
                 </svg>
                 Video Servers:
               </span>
@@ -686,8 +1232,11 @@
               {#if malId !== null}
                 <button
                   type="button"
-                  class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer === 'embed_animekai' ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-                  onclick={() => (selectedServer = 'embed_animekai')}
+                  class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer ===
+                  'embed_animekai'
+                    ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40'
+                    : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                  onclick={() => setServer("embed_animekai")}
                 >
                   Server 1
                 </button>
@@ -696,8 +1245,11 @@
               {#if animixUrl}
                 <button
                   type="button"
-                  class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer === 'embed_animix' ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-                  onclick={() => (selectedServer = 'embed_animix')}
+                  class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer ===
+                  'embed_animix'
+                    ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40'
+                    : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                  onclick={() => setServer("embed_animix")}
                 >
                   Server 2
                 </button>
@@ -705,16 +1257,23 @@
 
               <button
                 type="button"
-                class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer === 'embed_videasy' ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-                onclick={() => (selectedServer = 'embed_videasy')}
+                class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer ===
+                'native_resolver'
+                  ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40'
+                  : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                onclick={() => setServer("native_resolver")}
               >
                 Server 3
               </button>
 
               <button
                 type="button"
-                class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer === 'embed_vidsrc_cc' ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-                onclick={() => (selectedServer = 'embed_vidsrc_cc')}
+                class="rounded-lg px-2.5 py-1 text-xs font-bold transition-all {selectedServer ===
+                'embed_vidsrc_cc'
+                  ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40'
+                  : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                onclick={() => setServer("embed_vidsrc_cc")}
+                title="9Anime (9anime.si) - Multi-Layer Ad Blocked"
               >
                 Server 4
               </button>
@@ -723,36 +1282,76 @@
               <span class="mx-1 h-5 w-px bg-border/70"></span>
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings.current.auto_skip_intro && settings.current.auto_skip_outro ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings
+                  .current.auto_skip_intro && settings.current.auto_skip_outro
+                  ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400'
+                  : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
                 onclick={toggleAutoSkip}
                 title="Automatically skip intro and outro"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                  stroke="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z"
+                  />
                 </svg>
                 <span>Auto-Skip</span>
               </button>
 
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings.current.autoplay ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings
+                  .current.autoplay
+                  ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400'
+                  : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
                 onclick={toggleAutoplay}
                 title="Start the episode as soon as it loads"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM9.555 7.168A1 1 0 0 0 8 8v4a1 1 0 0 0 1.555.832l3-2a1 1 0 0 0 0-1.664l-3-2Z" clip-rule="evenodd" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM9.555 7.168A1 1 0 0 0 8 8v4a1 1 0 0 0 1.555.832l3-2a1 1 0 0 0 0-1.664l-3-2Z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
                 <span>Autoplay</span>
               </button>
 
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings.current.auto_fullscreen ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {settings
+                  .current.auto_fullscreen
+                  ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-400'
+                  : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
                 onclick={toggleAutoFullscreen}
                 title="Automatically go fullscreen when the next episode starts"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                  stroke="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+                  />
                 </svg>
                 <span>Auto-Fullscreen</span>
               </button>
@@ -763,12 +1362,27 @@
               <!-- Expand / Theater Mode -->
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {isTheaterMode ? 'border border-primary/40 bg-primary/20 text-primary' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {isTheaterMode
+                  ? 'border border-primary/40 bg-primary/20 text-primary'
+                  : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
                 onclick={() => (isTheaterMode = !isTheaterMode)}
-                title={isTheaterMode ? "Return to normal view" : "Expand player (Theater mode)"}
+                title={isTheaterMode
+                  ? "Return to normal view"
+                  : "Expand player (Theater mode)"}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                  stroke="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+                  />
                 </svg>
                 <span>{isTheaterMode ? "Standard" : "Expand"}</span>
               </button>
@@ -776,12 +1390,21 @@
               <!-- Turn Off Light (Cinema Mode) -->
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {isCinemaMode ? 'border border-amber-400/40 bg-amber-400/20 text-amber-300' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {isCinemaMode
+                  ? 'border border-amber-400/40 bg-amber-400/20 text-amber-300'
+                  : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
                 onclick={() => (isCinemaMode = !isCinemaMode)}
                 title="Dim ambient lights for cinema experience"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 text-amber-400">
-                  <path d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2ZM10 15a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 15ZM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.657 5.404a.75.75 0 1 0-1.06-1.06l-1.061 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM6.464 14.596a.75.75 0 1 0-1.06-1.06l-1.06 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM18 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 18 10ZM5 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 5 10ZM14.596 14.596a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06ZM5.404 5.404a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06Z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3.5 w-3.5 text-amber-400"
+                >
+                  <path
+                    d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2ZM10 15a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 15ZM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.657 5.404a.75.75 0 1 0-1.06-1.06l-1.061 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM6.464 14.596a.75.75 0 1 0-1.06-1.06l-1.06 1.06a.75.75 0 0 0 1.06 1.06l1.06-1.06ZM18 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 18 10ZM5 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 5 10ZM14.596 14.596a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06ZM5.404 5.404a.75.75 0 0 0 1.06-1.06l-1.06-1.06a.75.75 0 0 0-1.06 1.06l1.06 1.06Z"
+                  />
                 </svg>
                 <span>Light</span>
               </button>
@@ -793,8 +1416,19 @@
                 onclick={fullscreenFrame}
                 title="Fullscreen the player frame"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                  stroke="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+                  />
                 </svg>
                 <span>Fullscreen</span>
               </button>
@@ -802,12 +1436,25 @@
               {#if selectedServer === "embed_animekai"}
                 <button
                   type="button"
-                  class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {skipSetupOpen ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                  class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all {skipSetupOpen
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'border border-border/80 text-muted-foreground hover:bg-accent hover:text-foreground'}"
                   onclick={() => (skipSetupOpen = !skipSetupOpen)}
                   title="Configure skip intro/outro markers for this anime"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="2"
+                    stroke="currentColor"
+                    class="h-3.5 w-3.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z"
+                    />
                   </svg>
                   <span>Skip Setup</span>
                 </button>
@@ -816,7 +1463,9 @@
           </div>
 
           <!-- Bottom Dock Row: Mark Watched, Download & Help -->
-          <div class="flex flex-wrap items-center justify-between gap-2.5 border-t border-border/50 pt-2 text-xs">
+          <div
+            class="flex flex-wrap items-center justify-between gap-2.5 border-t border-border/50 pt-2 text-xs"
+          >
             <div class="flex items-center gap-2">
               <button
                 type="button"
@@ -824,8 +1473,17 @@
                 onclick={() => void markWatched()}
                 title="Mark this episode watched and proceed to next"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-                  <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
                 <span>Mark Watched{nextEpisode ? " → Next" : ""}</span>
               </button>
@@ -837,38 +1495,68 @@
                 class="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/15 px-3 py-1 font-bold text-sky-400 transition-all hover:bg-sky-500/25"
                 title="Open player full-page in a new tab"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                  stroke="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                  />
                 </svg>
                 <span>Download</span>
               </a>
             </div>
 
             <p class="text-[11px] text-muted-foreground">
-              Not loading? Switch servers above or whitelist this site in your ad blocker.
+              Not loading? Switch servers above or whitelist this site in your
+              ad blocker.
             </p>
           </div>
         </div>
 
         <!-- Skip Setup Panel -->
         {#if skipSetupOpen && selectedServer === "embed_animekai"}
-          <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-card/60 p-3.5 text-xs shadow-sm backdrop-blur">
-            <span class="font-bold text-foreground">Your skip data (applies to whole series):</span>
+          <div
+            class="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-card/60 p-3.5 text-xs shadow-sm backdrop-blur"
+          >
+            <span class="font-bold text-foreground"
+              >Your skip data (applies to whole series):</span
+            >
             <button
               type="button"
-              class="rounded-lg px-2.5 py-1 font-semibold transition-colors {markingIntro !== null ? 'animate-pulse bg-amber-400 text-amber-950 font-bold' : 'border border-border/70 hover:bg-accent'}"
+              class="rounded-lg px-2.5 py-1 font-semibold transition-colors {markingIntro !==
+              null
+                ? 'animate-pulse bg-amber-400 text-amber-950 font-bold'
+                : 'border border-border/70 hover:bg-accent'}"
               onclick={markIntro}
               title="Click at the start of the opening theme, then again at its end"
             >
-              {markingIntro !== null ? `Intro start ${markingIntro}s — click at END` : customIntro ? `Intro ${customIntro[0]}s–${customIntro[1]}s ↻` : "Mark Intro"}
+              {markingIntro !== null
+                ? `Intro start ${markingIntro}s — click at END`
+                : customIntro
+                  ? `Intro ${customIntro[0]}s–${customIntro[1]}s ↻`
+                  : "Mark Intro"}
             </button>
             <button
               type="button"
-              class="rounded-lg px-2.5 py-1 font-semibold transition-colors {markingOutro !== null ? 'animate-pulse bg-amber-400 text-amber-950 font-bold' : 'border border-border/70 hover:bg-accent'}"
+              class="rounded-lg px-2.5 py-1 font-semibold transition-colors {markingOutro !==
+              null
+                ? 'animate-pulse bg-amber-400 text-amber-950 font-bold'
+                : 'border border-border/70 hover:bg-accent'}"
               onclick={markOutro}
               title="Click at the start of the ending theme, then again at its end"
             >
-              {markingOutro !== null ? `Outro start ${markingOutro}s — click at END` : customOutro ? `Outro ${customOutro[0]}s–${customOutro[1]}s ↻` : "Mark Outro"}
+              {markingOutro !== null
+                ? `Outro start ${markingOutro}s — click at END`
+                : customOutro
+                  ? `Outro ${customOutro[0]}s–${customOutro[1]}s ↻`
+                  : "Mark Outro"}
             </button>
             {#if customIntro || customOutro}
               <button
@@ -880,7 +1568,8 @@
               </button>
             {/if}
             <span class="ml-auto text-[11px] text-muted-foreground">
-              Play video, click at start of OP/ED, click again at end — auto-skip will handle the rest!
+              Play video, click at start of OP/ED, click again at end —
+              auto-skip will handle the rest!
             </span>
           </div>
         {/if}
@@ -888,41 +1577,77 @@
 
       <!-- RIGHT: Episodes List Sidebar (Directly beside player on desktop) -->
       <aside
-        class="{isTheaterMode ? 'w-full' : 'lg:col-span-4 xl:col-span-4 2xl:col-span-3'} flex flex-col"
+        class="{isTheaterMode
+          ? 'w-full'
+          : 'lg:col-span-4 xl:col-span-4 2xl:col-span-3'} flex flex-col"
         aria-label="Episodes list"
       >
-        <div class="flex flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/75 shadow-xl backdrop-blur-xl h-[560px] lg:h-[620px] transition-all">
+        <div
+          class="flex flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/75 shadow-xl backdrop-blur-xl h-[560px] lg:h-[620px] transition-all"
+        >
           <!-- Sidebar Header -->
-          <div class="flex items-center justify-between border-b border-border/70 bg-muted/20 px-4 py-3">
+          <div
+            class="flex items-center justify-between border-b border-border/70 bg-muted/20 px-4 py-3"
+          >
             <div class="flex items-center gap-2">
-              <span class="text-sm font-black tracking-wide text-foreground">Episodes list</span>
-              <span class="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-bold text-primary">
+              <span class="text-sm font-black tracking-wide text-foreground"
+                >Episodes list</span
+              >
+              <span
+                class="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-bold text-primary"
+              >
                 {episodes.length}
               </span>
             </div>
 
             <!-- List vs Grid View Toggle Buttons -->
-            <div class="inline-flex rounded-lg border border-border/80 bg-background/80 p-0.5 text-xs shadow-xs">
+            <div
+              class="inline-flex rounded-lg border border-border/80 bg-background/80 p-0.5 text-xs shadow-xs"
+            >
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-bold transition-all {drawerViewMode === 'list' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
-                onclick={() => (drawerViewMode = 'list')}
+                class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-bold transition-all {drawerViewMode ===
+                'list'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (drawerViewMode = "list")}
                 title="Detailed list with thumbnails"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-                  <path fill-rule="evenodd" d="M2 4.75A.75.75 0 0 1 2.75 4h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 4.75Zm0 5A.75.75 0 0 1 2.75 9h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 9.75Zm0 5a.75.75 0 0 1 .75-.75h14.5a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1-.75-.75Z" clip-rule="evenodd" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M2 4.75A.75.75 0 0 1 2.75 4h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 4.75Zm0 5A.75.75 0 0 1 2.75 9h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 9.75Zm0 5a.75.75 0 0 1 .75-.75h14.5a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1-.75-.75Z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
                 <span>List</span>
               </button>
 
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-bold transition-all {drawerViewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
-                onclick={() => (drawerViewMode = 'grid')}
+                class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-bold transition-all {drawerViewMode ===
+                'grid'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (drawerViewMode = "grid")}
                 title="Compact numbered grid"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-                  <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z" clip-rule="evenodd" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3.5 w-3.5"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
                 <span>Grid</span>
               </button>
@@ -930,11 +1655,22 @@
           </div>
 
           <!-- Quick Jump & Episode Range Sub-bar -->
-          <div class="flex flex-col gap-2 border-b border-border/60 bg-background/40 p-2.5">
+          <div
+            class="flex flex-col gap-2 border-b border-border/60 bg-background/40 p-2.5"
+          >
             <!-- Search Input -->
             <div class="relative flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground">
-                <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clip-rule="evenodd" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z"
+                  clip-rule="evenodd"
+                />
               </svg>
               <input
                 type="text"
@@ -956,12 +1692,20 @@
 
             <!-- Range Chunks Pills (for 30+ episodes) -->
             {#if drawerChunks.length > 0}
-              <div class="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-thin">
+              <div
+                class="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-thin"
+              >
                 {#each drawerChunks as chunk, idx (chunk.label)}
                   <button
                     type="button"
-                    class="rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all whitespace-nowrap {drawerChunkIndex === idx && !drawerQuery ? 'bg-primary text-primary-foreground font-black shadow-xs' : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
-                    onclick={() => { drawerChunkIndex = idx; drawerQuery = ""; }}
+                    class="rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all whitespace-nowrap {drawerChunkIndex ===
+                      idx && !drawerQuery
+                      ? 'bg-primary text-primary-foreground font-black shadow-xs'
+                      : 'border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'}"
+                    onclick={() => {
+                      drawerChunkIndex = idx;
+                      drawerQuery = "";
+                    }}
                   >
                     {chunk.label}
                   </button>
@@ -980,14 +1724,21 @@
                     <button
                       id={`watch-ep-btn-${ep.episode_number}`}
                       type="button"
-                      class="group relative flex w-full items-center gap-3 rounded-xl p-2 text-left transition-all {ep.episode_number === episodeId ? 'border border-primary/50 bg-primary/20 text-primary shadow-sm' : 'border border-transparent hover:border-border/60 hover:bg-accent/70 text-foreground'}"
+                      class="group relative flex w-full items-center gap-3 rounded-xl p-2 text-left transition-all {ep.episode_number ===
+                      episodeId
+                        ? 'border border-primary/50 bg-primary/20 text-primary shadow-sm'
+                        : 'border border-transparent hover:border-border/60 hover:bg-accent/70 text-foreground'}"
                       onclick={() => goToEpisode(ep.episode_number)}
                     >
                       <!-- Thumbnail Container -->
-                      <div class="relative h-12 w-20 shrink-0 overflow-hidden rounded-lg bg-muted shadow-xs">
+                      <div
+                        class="relative h-12 w-20 shrink-0 overflow-hidden rounded-lg bg-muted shadow-xs"
+                      >
                         {#if ep.thumbnail || anime.banner_image || anime.cover_image}
                           <img
-                            src={ep.thumbnail || anime.banner_image || anime.cover_image}
+                            src={ep.thumbnail ||
+                              anime.banner_image ||
+                              anime.cover_image}
                             alt=""
                             class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                             loading="lazy"
@@ -996,14 +1747,27 @@
 
                         {#if ep.episode_number === episodeId}
                           <!-- Glowing Playing indicator -->
-                          <div class="absolute inset-0 flex items-center justify-center bg-primary/40 backdrop-blur-2xs">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5 text-white animate-pulse">
-                              <path d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11V15.89a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z" />
+                          <div
+                            class="absolute inset-0 flex items-center justify-center bg-primary/40 backdrop-blur-2xs"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              class="h-5 w-5 text-white animate-pulse"
+                            >
+                              <path
+                                d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11V15.89a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z"
+                              />
                             </svg>
                           </div>
                         {:else}
-                          <div class="absolute inset-0 bg-black/25 group-hover:bg-black/10 transition-colors"></div>
-                          <span class="absolute top-1 left-1 rounded bg-black/80 px-1 py-0.2 text-[9px] font-bold text-white">
+                          <div
+                            class="absolute inset-0 bg-black/25 group-hover:bg-black/10 transition-colors"
+                          ></div>
+                          <span
+                            class="absolute top-1 left-1 rounded bg-black/80 px-1 py-0.2 text-[9px] font-bold text-white"
+                          >
                             EP {ep.episode_number}
                           </span>
                         {/if}
@@ -1012,28 +1776,54 @@
                       <!-- Episode Text & Status -->
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center justify-between gap-1">
-                          <p class="truncate text-xs font-bold {ep.episode_number === episodeId ? 'text-primary' : 'text-foreground'}">
+                          <p
+                            class="truncate text-xs font-bold {ep.episode_number ===
+                            episodeId
+                              ? 'text-primary'
+                              : 'text-foreground'}"
+                          >
                             Episode {ep.episode_number}
                           </p>
                           {#if watchedEpisodeNumbers.has(ep.episode_number)}
-                            <span class="text-emerald-400 shrink-0" title="Completed">
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-                                <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
+                            <span
+                              class="text-emerald-400 shrink-0"
+                              title="Completed"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                class="h-3.5 w-3.5"
+                              >
+                                <path
+                                  fill-rule="evenodd"
+                                  d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                                  clip-rule="evenodd"
+                                />
                               </svg>
                             </span>
                           {/if}
                         </div>
 
-                        <p class="truncate text-[11px] text-muted-foreground mt-0.5">
-                          {ep.title && ep.title !== `Episode ${ep.episode_number}` ? ep.title : animeTitle}
+                        <p
+                          class="truncate text-[11px] text-muted-foreground mt-0.5"
+                        >
+                          {ep.title &&
+                          ep.title !== `Episode ${ep.episode_number}`
+                            ? ep.title
+                            : animeTitle}
                         </p>
 
-                        <div class="flex items-center gap-2 text-[10px] text-muted-foreground/80 mt-1">
+                        <div
+                          class="flex items-center gap-2 text-[10px] text-muted-foreground/80 mt-1"
+                        >
                           {#if ep.air_date}
                             <span>{formatAirDate(ep.air_date)}</span>
                           {/if}
                           {#if ep.episode_number === episodeId}
-                            <span class="rounded bg-primary/20 px-1.5 py-0.2 text-[9px] font-black text-primary uppercase tracking-wider">
+                            <span
+                              class="rounded bg-primary/20 px-1.5 py-0.2 text-[9px] font-black text-primary uppercase tracking-wider"
+                            >
                               Playing
                             </span>
                           {/if}
@@ -1050,14 +1840,26 @@
                   <button
                     id={`watch-ep-btn-${ep.episode_number}`}
                     type="button"
-                    class="group relative flex flex-col items-center justify-center rounded-xl p-2 text-center transition-all {ep.episode_number === episodeId ? 'border border-primary bg-primary text-primary-foreground font-black shadow-md ring-2 ring-primary/40' : 'border border-border/70 bg-card/80 hover:border-primary hover:bg-primary/10 hover:text-primary'}"
+                    class="group relative flex flex-col items-center justify-center rounded-xl p-2 text-center transition-all {ep.episode_number ===
+                    episodeId
+                      ? 'border border-primary bg-primary text-primary-foreground font-black shadow-md ring-2 ring-primary/40'
+                      : 'border border-border/70 bg-card/80 hover:border-primary hover:bg-primary/10 hover:text-primary'}"
                     onclick={() => goToEpisode(ep.episode_number)}
-                    title={ep.title ? `Episode ${ep.episode_number}: ${ep.title}` : `Episode ${ep.episode_number}`}
+                    title={ep.title
+                      ? `Episode ${ep.episode_number}: ${ep.title}`
+                      : `Episode ${ep.episode_number}`}
                   >
-                    <span class="text-xs font-bold leading-none">{ep.episode_number}</span>
-                    <span class="text-[8px] uppercase tracking-wider opacity-70 mt-0.5">EP</span>
+                    <span class="text-xs font-bold leading-none"
+                      >{ep.episode_number}</span
+                    >
+                    <span
+                      class="text-[8px] uppercase tracking-wider opacity-70 mt-0.5"
+                      >EP</span
+                    >
                     {#if watchedEpisodeNumbers.has(ep.episode_number) && ep.episode_number !== episodeId}
-                      <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                      <span
+                        class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-emerald-400"
+                      ></span>
                     {/if}
                   </button>
                 {/each}
@@ -1069,17 +1871,23 @@
     </div>
 
     <!-- Quick Anime Overview Card Below Player & Sidebar -->
-    <section class="relative overflow-hidden rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-6 backdrop-blur-xl shadow-lg">
+    <section
+      class="relative overflow-hidden rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-6 backdrop-blur-xl shadow-lg"
+    >
       <div class="flex flex-col sm:flex-row gap-5 items-start">
         {#if anime.cover_image}
-          <div class="relative w-28 sm:w-36 md:w-44 shrink-0 aspect-[2/3] overflow-hidden rounded-xl shadow-xl ring-1 ring-white/10 group self-center sm:self-start">
+          <div
+            class="relative w-28 sm:w-36 md:w-44 shrink-0 aspect-[2/3] overflow-hidden rounded-xl shadow-xl ring-1 ring-white/10 group self-center sm:self-start"
+          >
             <img
               src={anime.cover_image}
               alt={animeTitle}
               class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
             {#if anime.format}
-              <span class="absolute top-2 left-2 rounded-md bg-black/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur">
+              <span
+                class="absolute top-2 left-2 rounded-md bg-black/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur"
+              >
                 {anime.format}
               </span>
             {/if}
@@ -1090,12 +1898,17 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 class="text-lg sm:text-xl font-black text-foreground">
-                <a href="#/anime/{animeId}" class="hover:text-primary transition-colors">
+                <a
+                  href="#/anime/{animeId}"
+                  class="hover:text-primary transition-colors"
+                >
                   {animeTitle}
                 </a>
               </h2>
               {#if anime.title_romaji && anime.title_romaji !== animeTitle}
-                <p class="text-xs text-muted-foreground mt-0.5">{anime.title_romaji}</p>
+                <p class="text-xs text-muted-foreground mt-0.5">
+                  {anime.title_romaji}
+                </p>
               {/if}
             </div>
 
@@ -1104,8 +1917,19 @@
               class="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 hover:border-primary active:scale-95"
             >
               <span>View Full Anime Details</span>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-3.5 w-3.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2.5"
+                stroke="currentColor"
+                class="h-3.5 w-3.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                />
               </svg>
             </a>
           </div>
@@ -1114,7 +1938,9 @@
           {#if anime.genres && anime.genres.length > 0}
             <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
               {#each anime.genres as genre}
-                <span class="inline-flex items-center rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary">
+                <span
+                  class="inline-flex items-center rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary"
+                >
                   {genre}
                 </span>
               {/each}
@@ -1124,7 +1950,11 @@
           <!-- Synopsis with Expand Toggle -->
           {#if anime.description}
             <div class="mt-3">
-              <p class="text-xs sm:text-sm leading-relaxed text-foreground/80 transition-all {isSynopsisExpanded ? '' : 'line-clamp-2 sm:line-clamp-3'}">
+              <p
+                class="text-xs sm:text-sm leading-relaxed text-foreground/80 transition-all {isSynopsisExpanded
+                  ? ''
+                  : 'line-clamp-2 sm:line-clamp-3'}"
+              >
                 {stripHtml(anime.description)}
               </p>
               {#if stripHtml(anime.description).length > 160}
@@ -1143,4 +1973,3 @@
     </section>
   </div>
 {/if}
-
