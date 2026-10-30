@@ -5,6 +5,8 @@
   "type": "module",
   "main": "src/animedy_v1/index.ts",
   "scripts": {
+    "setup": "bash ./setup.sh",
+    "install:all": "npm install && (cd src/ui_test && npm install)",
     "dev": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs watch src/animedy_v1/index.ts",
     "build": "npx tsc -p tsconfig.json && (cd src/ui_test && npm install && npm run build)",
     "postbuild": "mkdir -p dist/jsondef && cp -R src/jsondef/. dist/jsondef/",

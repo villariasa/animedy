@@ -9,7 +9,8 @@
 
   let {
     anime,
-    buttonClass = "flex h-7 w-7 items-center justify-center rounded-full bg-black/75 shadow backdrop-blur transition-transform hover:scale-110 active:scale-90"
+    buttonClass = "flex h-7 w-7 items-center justify-center rounded-full bg-black/75 shadow backdrop-blur transition-transform hover:scale-110 active:scale-90",
+    iconClass = "h-4 w-4"
   }: {
     anime: {
       anime_id: number;
@@ -20,6 +21,7 @@
       season_year?: number | null;
     };
     buttonClass?: string;
+    iconClass?: string;
   } = $props();
 
   let open = $state(false);
@@ -92,7 +94,7 @@
     aria-haspopup="menu"
     aria-expanded={open}
   >
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class={iconClass}>
       {#if currentStatus || inAnyCustomList}
         <path d="M4 3.5A1.5 1.5 0 0 1 5.5 2h9A1.5 1.5 0 0 1 16 3.5v14.09a.5.5 0 0 1-.8.4L10 13.5l-5.2 4.49a.5.5 0 0 1-.8-.4V3.5Z" />
       {:else}

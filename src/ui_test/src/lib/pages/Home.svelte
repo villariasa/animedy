@@ -23,6 +23,7 @@
   import { watchStatusStore } from "$lib/stores/watchStatus.svelte";
   import { searchHistory } from "$lib/stores/searchHistory.svelte";
   import HoverSelect, { type SelectOption } from "$lib/components/HoverSelect.svelte";
+  import GenreTags from "$lib/components/GenreTags.svelte";
 
   type MainCuratedTab = "latest_release" | "trending";
   type RankingTab = "top_rated" | "trending" | "this_week" | "this_month";
@@ -521,6 +522,7 @@
                   <p class="text-xs text-muted-foreground">
                     {#if item.score}<span class="font-semibold text-amber-400">★ {(item.score / 10).toFixed(1)}</span> · {/if}{[item.format, item.season_year].filter(Boolean).join(" · ")}
                   </p>
+                  <GenreTags genres={item.genres} class="mt-1.5" />
                 </div>
               </button>
             </li>
@@ -591,32 +593,40 @@
           </div>
         </div>
 
-        <!-- Discovery Filters: Genre / Year / Format (hover to open) -->
+        <!-- Discovery Filters: Genre / Year / Format (hover to open) —
+             flex-1 + min-w-0 on mobile so all three share one row evenly
+             instead of wrapping lopsided (2 then 1); fixed widths return at sm+. -->
         <div class="mb-6 flex flex-wrap items-center gap-2">
-          <HoverSelect
-            bind:value={filterGenre}
-            options={genreSelectOptions}
-            placeholder="All Genres"
-            triggerClass="w-36 bg-card/90 backdrop-blur"
-          />
-          <HoverSelect
-            bind:value={filterYear}
-            options={yearSelectOptions}
-            placeholder="All Years"
-            triggerClass="w-28 bg-card/90 backdrop-blur"
-          />
-          <HoverSelect
-            bind:value={filterFormat}
-            options={formatSelectOptions}
-            placeholder="All Formats"
-            triggerClass="w-32 bg-card/90 backdrop-blur"
-          />
+          <div class="min-w-0 flex-1 sm:max-w-none sm:flex-none">
+            <HoverSelect
+              bind:value={filterGenre}
+              options={genreSelectOptions}
+              placeholder="All Genres"
+              triggerClass="w-full sm:w-36 bg-card/90 backdrop-blur"
+            />
+          </div>
+          <div class="min-w-0 flex-1 sm:max-w-none sm:flex-none">
+            <HoverSelect
+              bind:value={filterYear}
+              options={yearSelectOptions}
+              placeholder="All Years"
+              triggerClass="w-full sm:w-28 bg-card/90 backdrop-blur"
+            />
+          </div>
+          <div class="min-w-0 flex-1 sm:max-w-none sm:flex-none">
+            <HoverSelect
+              bind:value={filterFormat}
+              options={formatSelectOptions}
+              placeholder="All Formats"
+              triggerClass="w-full sm:w-32 bg-card/90 backdrop-blur"
+            />
+          </div>
 
           {#if filtersActive}
             <button
               type="button"
               onclick={clearFilters}
-              class="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-background/90 px-2.5 h-9 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50"
+              class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border/80 bg-background/90 px-2.5 h-9 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground hover:border-primary/50"
             >
               Clear filters ✕
             </button>
@@ -624,7 +634,7 @@
         </div>
 
         {#if curatedLoading}
-          <div class="grid {activeTab === 'latest_release' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5'} gap-4">
+          <div class="grid {activeTab === 'latest_release' ? 'grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5'} gap-4">
             {#each Array(activeTab === 'latest_release' ? 12 : 10) as _, i (i)}
               <div class="flex animate-pulse flex-col gap-2">
                 <div class="{activeTab === 'latest_release' ? 'aspect-video' : 'aspect-[2/3]'} w-full rounded-xl bg-muted/60"></div>
@@ -645,7 +655,7 @@
             {/if}
           </p>
         {:else}
-          <ul class="grid {activeTab === 'latest_release' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5'} gap-4">
+          <ul class="grid {activeTab === 'latest_release' ? 'grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5'} gap-4">
             {#each curatedItems as item, index (item.anime_id)}
               {@const isLatest = activeTab === 'latest_release'}
               {@const previewImg = isLatest ? (item.episode_thumbnail || item.banner_image || item.cover_image) : item.cover_image}
@@ -675,8 +685,8 @@
                     <!-- Play button hover overlay for Latest Release -->
                     {#if isLatest}
                       <div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover:opacity-100">
-                        <div class="flex h-11 w-11 items-center justify-center rounded-full bg-primary/95 text-primary-foreground shadow-xl ring-2 ring-white/20 transition-transform duration-200 group-hover:scale-110">
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5 translate-x-0.5">
+                        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/95 text-primary-foreground shadow-xl ring-2 ring-white/20 transition-transform duration-200 group-hover:scale-110">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 translate-x-0.5">
                             <path d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11V15.89a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z" />
                           </svg>
                         </div>
@@ -703,27 +713,27 @@
                     <!-- Release day badge (only "Today" or "Yesterday") -->
                     {#if dayTag}
                       <span
-                        class="absolute {isLatest ? 'top-2 left-2' : 'top-2 left-9'} z-10 flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-md backdrop-blur {
+                        class="absolute {isLatest ? 'top-1.5 left-1.5' : 'top-1.5 left-9'} z-10 flex items-center gap-0.5 rounded px-1 py-[1px] text-[8px] font-bold uppercase tracking-tight shadow-sm backdrop-blur {
                           dayTag === 'Today'
                             ? 'bg-emerald-500/90 text-white ring-1 ring-emerald-300/60'
                             : 'bg-amber-500/90 text-white ring-1 ring-amber-300/60'
                         }"
                       >
-                        <span class="h-1.5 w-1.5 rounded-full {dayTag === 'Today' ? 'bg-white animate-pulse' : 'bg-white/90'}"></span>
+                        <span class="h-1 w-1 rounded-full {dayTag === 'Today' ? 'bg-white animate-pulse' : 'bg-white/90'}"></span>
                         {dayTag}
                       </span>
                     {/if}
 
                     <!-- Format pill -->
                     {#if item.format}
-                      <span class="absolute {isLatest && !dayTag ? 'top-2 left-2' : 'bottom-2 left-2'} rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
+                      <span class="absolute {isLatest && !dayTag ? 'top-1.5 left-1.5' : 'bottom-1.5 left-1.5'} rounded bg-black/75 px-1 py-px text-[8px] font-bold uppercase tracking-tight text-white backdrop-blur">
                         {item.format}
                       </span>
                     {/if}
 
                     <!-- Latest released episode pill -->
                     {#if item.latest_episode && item.latest_episode > 0}
-                      <span class="absolute bottom-2 right-2 rounded-lg bg-primary/95 px-2 py-0.5 text-[10px] font-black tracking-wide text-primary-foreground shadow backdrop-blur">
+                      <span class="absolute bottom-1.5 right-1.5 rounded bg-primary/95 px-1 py-px text-[8px] font-bold tracking-tight text-primary-foreground shadow backdrop-blur">
                         EP {item.latest_episode}
                       </span>
                     {/if}
@@ -734,7 +744,7 @@
                   <!-- Like / Love Button -->
                   <button
                     type="button"
-                    class="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/75 shadow backdrop-blur transition-transform hover:scale-110 active:scale-90 {likes.isLiked(item.anime_id) ? 'text-rose-500' : 'text-white/80 hover:text-rose-400'}"
+                    class="absolute top-1.5 right-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 shadow backdrop-blur transition-transform hover:scale-110 active:scale-90 {likes.isLiked(item.anime_id) ? 'text-rose-500' : 'text-white/80 hover:text-rose-400'}"
                     onclick={(e) => {
                       e.stopPropagation();
                       likes.toggleLike(item);
@@ -742,27 +752,31 @@
                     title={likes.isLiked(item.anime_id) ? "Loved" : "Love this anime"}
                     aria-label="Like anime"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
                       <path d="m9.653 16.915-.005-.003-.019-.01a20.759 20.759 0 0 1-1.16-1.107 20.373 20.373 0 0 1-3.69-4.836A7.472 7.472 0 0 1 4 7.5C4 4.462 6.462 2 9.5 2a5.498 5.498 0 0 1 4.298 2.043A5.498 5.498 0 0 1 18.5 7.5c0 1.258-.337 2.44-.925 3.46a20.373 20.373 0 0 1-3.69 4.836 20.758 20.758 0 0 1-1.16 1.107l-.02.01-.005.003h-.002a.75.75 0 0 1-.698 0l-.002-.003Z" />
                     </svg>
                   </button>
 
                   <!-- Add to List Button -->
-                  <div class="absolute top-2 right-10 z-10">
-                    <AddToListButton anime={item} />
+                  <div class="absolute top-1.5 right-8 z-10">
+                    <AddToListButton
+                      anime={item}
+                      buttonClass="flex h-6 w-6 items-center justify-center rounded-full bg-black/75 shadow backdrop-blur transition-transform hover:scale-110 active:scale-90"
+                      iconClass="h-3 w-3"
+                    />
                   </div>
 
                   <div class="w-full min-w-0 overflow-hidden">
                     <button
                       type="button"
-                      class="block w-full truncate text-left text-sm font-semibold tracking-tight transition-colors hover:text-primary"
+                      class="block w-full truncate text-left text-xs font-semibold tracking-tight transition-colors hover:text-primary"
                       onclick={() => router.go(`/anime/${item.anime_id}`)}
                       title={displayTitle(item.title_english, item.title_romaji)}
                     >
                       {displayTitle(item.title_english, item.title_romaji)}
                     </button>
                     {#if isLatest && item.episode_title}
-                      <p class="truncate text-xs font-medium text-slate-300 mt-0.5" title={item.episode_title}>
+                      <p class="truncate text-[11px] font-medium text-slate-300 mt-0.5" title={item.episode_title}>
                         {item.episode_title}
                       </p>
                     {/if}
@@ -787,6 +801,7 @@
                         </span>
                       {/if}
                     </p>
+                    <GenreTags genres={item.genres} class="mt-1" />
                   </div>
                 </div>
               </li>

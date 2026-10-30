@@ -26,6 +26,12 @@ All automated actions (autoplay, auto-next, intro/outro skipping, fullscreen) ar
 
 <br/>
 
+<p align="center">
+  <a href="https://animedy.pages.dev/" target="_blank" rel="noopener noreferrer">
+    <img src="logo/animedy-preview.gif" alt="Animedy Live Platform Preview" width="100%" style="border-radius: 10px;"/>
+  </a>
+</p>
+
 <div align="center">
   <img src="https://capsule-render.vercel.app/api?type=rect&color=0:0D0B1E,100:2A1B4D&height=2&width=850" alt="divider"/>
 </div>
@@ -251,39 +257,67 @@ All endpoints strictly use **POST** requests with JSON bodies (accepting `{}` wh
 - **MariaDB / MySQL:** v10.5+ / v8.0+
 - **npm** or **pnpm**
 
-### 1. Clone & Install Dependencies
+### ⚡ Quick Start (One-Click Setup)
+Run the automated setup script to install all dependencies (backend + frontend), copy `.env`, and verify your installation in one command:
+
+**Linux / macOS / WSL / Git Bash:**
 ```bash
 git clone https://github.com/villariasa/animedy.git
 cd animedy
-npm install
+./setup.sh
+```
+*(or run `npm run setup`)*
+
+**Windows (Command Prompt / PowerShell):**
+```cmd
+setup.bat
 ```
 
-### 2. Configure Environment Variables
-Copy `.env.example` to `.env` and configure your credentials:
+---
+
+### Manual Setup (Step-by-Step)
+
+#### 1. Install Dependencies
+```bash
+# Install root & backend dependencies
+npm install
+
+# Install frontend UI dependencies
+cd src/ui_test && npm install
+cd ../..
+```
+*(or run `npm run install:all`)*
+
+#### 2. Configure Environment Variables
 ```bash
 cp .env.example .env
 ```
+Default `.env` configuration:
 ```env
 PORT=3000
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=animedy_db
-JWT_SECRET=your_super_secret_jwt_key
+DB_USER=animedy_user
+DB_PASSWORD=changeme
+DB_NAME=animedy
+JWT_SECRET=changeme_jwt_secret
 ```
 
-### 3. Initialize MariaDB Schema
-Execute the DDL schema to provision all 8 core tables:
-```bash
-mysql -u root -p animedy_db < src/animedy_v1/queries/ddl.sql
-```
-
-### 4. Run Development Server
-```bash
-npm run dev
-```
-The Hono backend will start on `http://localhost:3000`.
+#### 3. Run Development Servers
+- **Run both Backend + Frontend simultaneously:**
+  ```bash
+  ./run.sh
+  ```
+- **Run Frontend UI only (client-side AniList / video player):**
+  ```bash
+  cd src/ui_test && npm run dev
+  ```
+  App opens at `http://localhost:5173`.
+- **Run Backend API only:**
+  ```bash
+  npm run dev
+  ```
+  API runs at `http://localhost:3000`, Swagger docs at `http://localhost:3000/docs`.
 
 ### 5. Run Test Suite
 ```bash
