@@ -411,8 +411,19 @@
     }
   });
 
-  // User-gesture fullscreen for the frame itself ("auto" fullscreen without a
-  // click is blocked by every browser).
+  // Fullscreen event listener to sync state across episodes and Megaplay bridge
+  $effect(() => {
+    const handleFsChange = () => {
+      isFullscreen = document.fullscreenElement !== null;
+      sendToPlayer({ megaFullscreenState: isFullscreen });
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+    };
+  });
+
+  // User-gesture fullscreen for the frame itself
   function fullscreenFrame(): void {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
@@ -617,8 +628,26 @@
       if (!d || typeof d !== "object") {
         return;
       }
-      const msg = d as { event?: string; time?: number; duration?: number };
+      const msg = d as {
+        event?: string;
+        time?: number;
+        duration?: number;
+        megaCommand?: string;
+        megaFullscreenState?: boolean;
+      };
+
+      if (msg.megaCommand === "toggleFullscreen") {
+        fullscreenFrame();
+        return;
+      }
+      if (msg.megaCommand === "getFullscreenState") {
+        sendToPlayer({ megaFullscreenState: Boolean(document.fullscreenElement) });
+        return;
+      }
+
       if (msg.event === "PLAYER_READY") {
+        sendSkipData();
+        sendToPlayer({ megaFullscreenState: Boolean(document.fullscreenElement) });
         sendSkipData();
         if (resumePos > 30) {
           sendToPlayer({ cmd: "SEEK", value: resumePos });
@@ -700,6 +729,23 @@
         void saveRealProgress(realPos, realDur, false);
       }
     };
+  });
+
+  // In-place episode dispatcher for Server 1 so the iframe never unmounts in fullscreen
+  $effect(() => {
+    const epNum = episodeId;
+    const mId = malId;
+    if (selectedServer === "embed_animekai" && playerFrame?.contentWindow && epNum > 0) {
+      playerFrame.contentWindow.postMessage(
+        JSON.stringify({
+          cmd: "LOAD_EPISODE",
+          ep: epNum,
+          mal: mId,
+          cat: "sub"
+        }),
+        "*"
+      );
+    }
   });
 
   $effect(() => {
@@ -1194,94 +1240,96 @@
               </div>
             {/if}
 
-            {#key `${selectedServer}-${episodeId}`}
-              {#if selectedServer === "embed_animix" && animixUrl}
-              <iframe
-                src={`/api/server2/player?u=${encodeURIComponent(animixUrl)}`}
-                title="{animeTitle} - {episodeLabel}"
-                class="border-0"
-                style="width:{AMX.viewport}px;height:1200px;transform:scale({amxScale}) translate({-AMX.x}px, {-AMX.y}px);transform-origin:0 0;"
-                scrolling="no"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                allowfullscreen
-              ></iframe>
-            {:else if selectedServer === "native_resolver"}
-              {#if server3Loading}
-                <div class="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-                  <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
-                  <p class="text-sm font-medium text-slate-300 animate-pulse">Resolving stream…</p>
-                </div>
-              {:else if server3Error}
-                <div class="flex h-full w-full flex-col items-center justify-center gap-2 bg-black px-6 text-center">
-                  <p class="text-sm font-bold text-destructive">{server3Error}</p>
-                  <button
-                    type="button"
-                    class="mt-2 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground"
-                    onclick={() => loadServer3Stream(animeId, episodeId)}
-                  >
-                    Retry
-                  </button>
-                </div>
-              {:else if server3Stream}
-                <Player
-                  streamUrl={server3Stream.url}
-                  subtitles={server3Stream.subtitles.map((s) => ({ lang: s.lang, label: s.lang, url: s.url }))}
-                  title={animeTitle}
-                  episodeLabel={episodeLabel}
-                  canPrev={Boolean(prevEpisode)}
-                  canNext={Boolean(nextEpisode)}
-                  skipSegments={nativeSkipSegments}
-                  autoSkipIntro={settings.current.auto_skip_intro}
-                  autoSkipOutro={settings.current.auto_skip_outro}
-                  autoNext={settings.current.auto_next}
-                  autoFullscreen={settings.current.auto_fullscreen}
-                  autoPlay={settings.current.autoplay}
-                  onprev={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
-                  onnext={() => nextEpisode && goToEpisode(nextEpisode.episode_number)}
-                  onended={() => onNativePlayerEnded()}
-                  onfullscreen={fullscreenFrame}
-                />
-              {/if}
-            {:else if selectedServer === "embed_vidsrc_cc"}
-              {#if server4Loading}
-                <div class="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
-                  <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
-                  <p class="text-sm font-medium text-slate-300 animate-pulse">Connecting to 9Anime (Server 4)…</p>
-                  <p class="text-xs text-slate-500">Multi-layer ad blocker active</p>
-                </div>
-              {:else if !server4Url}
-                <div class="flex h-full w-full flex-col items-center justify-center gap-2 bg-black px-6 text-center">
-                  <p class="text-sm font-bold text-destructive">Could not load episode on 9Anime</p>
-                  <button
-                    type="button"
-                    class="mt-2 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground"
-                    onclick={() => loadServer4Stream(animeId, episodeId)}
-                  >
-                    Retry
-                  </button>
-                </div>
-              {:else}
-                <iframe
-                  bind:this={playerFrame}
-                  src={server4Url}
-                  title="{animeTitle} - {episodeLabel}"
-                  class="h-full w-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                  allowfullscreen
-                ></iframe>
-              {/if}
-            {:else}
+            {#if selectedServer === "embed_animekai"}
+              <!-- Server 1: Persistent iframe that NEVER unmounts during episode transitions (preserves fullscreen!) -->
               <iframe
                 bind:this={playerFrame}
-                src={serverEmbedUrls[selectedServer]}
+                src={serverEmbedUrls.embed_animekai}
                 title="{animeTitle} - {episodeLabel}"
                 class="h-full w-full border-0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                 allowfullscreen
               ></iframe>
+            {:else}
+              {#key `${selectedServer}-${episodeId}`}
+                {#if selectedServer === "embed_animix" && animixUrl}
+                  <iframe
+                    src={`/api/server2/player?u=${encodeURIComponent(animixUrl)}`}
+                    title="{animeTitle} - {episodeLabel}"
+                    class="h-full w-full border-0"
+                    scrolling="no"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                    allowfullscreen
+                  ></iframe>
+                {:else if selectedServer === "native_resolver"}
+                  {#if server3Loading}
+                    <div class="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+                      <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+                      <p class="text-sm font-medium text-slate-300 animate-pulse">Resolving stream…</p>
+                    </div>
+                  {:else if server3Error}
+                    <div class="flex h-full w-full flex-col items-center justify-center gap-2 bg-black px-6 text-center">
+                      <p class="text-sm font-bold text-destructive">{server3Error}</p>
+                      <button
+                        type="button"
+                        class="mt-2 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground"
+                        onclick={() => loadServer3Stream(animeId, episodeId)}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  {:else if server3Stream}
+                    <Player
+                      streamUrl={server3Stream.url}
+                      subtitles={server3Stream.subtitles.map((s) => ({ lang: s.lang, label: s.lang, url: s.url }))}
+                      title={animeTitle}
+                      episodeLabel={episodeLabel}
+                      canPrev={Boolean(prevEpisode)}
+                      canNext={Boolean(nextEpisode)}
+                      skipSegments={nativeSkipSegments}
+                      autoSkipIntro={settings.current.auto_skip_intro}
+                      autoSkipOutro={settings.current.auto_skip_outro}
+                      autoFullscreen={settings.current.auto_fullscreen}
+                      autoPlay={settings.current.autoplay}
+                      autoNext={settings.current.auto_next}
+                      onprev={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
+                      onnext={() => nextEpisode && goToEpisode(nextEpisode.episode_number)}
+                      onended={() => onNativePlayerEnded()}
+                      onfullscreen={fullscreenFrame}
+                    />
+                  {/if}
+                {:else if selectedServer === "embed_vidsrc_cc"}
+                  {#if server4Loading}
+                    <div class="flex h-full w-full flex-col items-center justify-center gap-3 bg-black">
+                      <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent"></div>
+                      <p class="text-sm font-medium text-slate-300 animate-pulse">Connecting to 9Anime (Server 4)…</p>
+                      <p class="text-xs text-slate-500">Multi-layer ad blocker active</p>
+                    </div>
+                  {:else if !server4Url}
+                    <div class="flex h-full w-full flex-col items-center justify-center gap-2 bg-black px-6 text-center">
+                      <p class="text-sm font-bold text-destructive">Could not load episode on 9Anime</p>
+                      <button
+                        type="button"
+                        class="mt-2 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground"
+                        onclick={() => loadServer4Stream(animeId, episodeId)}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  {:else}
+                    <iframe
+                      bind:this={playerFrame}
+                      src={server4Url}
+                      title="{animeTitle} - {episodeLabel}"
+                      class="h-full w-full border-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                      allowfullscreen
+                    ></iframe>
+                  {/if}
+                {/if}
+              {/key}
             {/if}
-          {/key}
           </div>
         </div>
 
