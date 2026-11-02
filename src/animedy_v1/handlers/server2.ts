@@ -59,8 +59,39 @@ export async function server2PlayerHandler(context: Context): Promise<Response> 
     });
 
     // 6. Inject the Multi-Layer AdBlock, Click-Trap & Anti-Adblock neutralization shield
-    const adBlockShield = `
+        const adBlockShield = `
     <base href="${origin}/">
+    <style>
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        overflow: hidden !important;
+        background: #000 !important;
+      }
+      header, footer, nav, .site-header, .site-footer, .anime-player-info-card,
+      .anime-player-meta, .announcement-banner, .comments, .sidebar, .popular-series,
+      #popover-server, #popover-episodes, #popover-quality, #popover-download,
+      .theatre-wrapper > *:not(#player-iframe):not(.player-active-iframe):not(#click-to-load-box),
+      .theatre-player > *:not(#player-iframe):not(.player-active-iframe) {
+        display: none !important;
+      }
+      #player-iframe, .player-active-iframe, .embed-responsive, .theatre-player, .player-container {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: 100vw !important;
+        max-height: 100vh !important;
+        z-index: 9999999 !important;
+        border: none !important;
+        border-radius: 0 !important;
+        display: block !important;
+        background: #000 !important;
+      }
+    </style>
     <script>
       (function() {
         // --- Layer 1: Popup & Opener Neutralizer ---

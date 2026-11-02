@@ -49,7 +49,15 @@ class Router {
   }
 
   go(path: string): void {
-    location.hash = path;
+    const newHash = path.startsWith("#") ? path : "#" + path;
+    if (location.hash !== newHash) {
+      if (typeof document !== "undefined" && document.fullscreenElement) {
+        history.replaceState(null, "", newHash);
+        this.current = parseHash(newHash);
+      } else {
+        location.hash = newHash;
+      }
+    }
   }
 }
 

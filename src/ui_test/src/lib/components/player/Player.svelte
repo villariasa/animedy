@@ -18,6 +18,7 @@
     ontoggledrawer,
     ontimeupdate,
     onpausesave,
+    onfullscreen,
     autoPlay = $bindable(false),
     autoNext = $bindable(false),
     autoSkipIntro = false,
@@ -42,6 +43,7 @@
     ontoggledrawer?: () => void;
     ontimeupdate?: (currentTime: number, duration: number) => void;
     onpausesave?: () => void;
+    onfullscreen?: () => void;
     autoPlay?: boolean;
     autoNext?: boolean;
     autoSkipIntro?: boolean;

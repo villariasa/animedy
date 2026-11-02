@@ -119,6 +119,7 @@
 
   let selectedServer = $state<StreamServer>(getStoredServer());
   let frameBox = $state<HTMLDivElement | null>(null);
+  let isFullscreen = $state(false);
 
   // Server 2: animepahe.ws episode page, cropped so ONLY the player region is
   // visible (their player is referer-locked, so the page itself is framed).
@@ -1181,7 +1182,7 @@
           <div
             bind:this={frameBox}
             bind:clientWidth={cropW}
-            class="relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black shadow-2xl ring-1 ring-white/10 group"
+            class="player-stage-box relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black shadow-2xl ring-1 ring-white/10 group {isFullscreen ? 'is-fullscreen' : ''}"
           >
             <!-- In-place viewing stream loader -->
             {#if streamLoading}
@@ -1239,6 +1240,7 @@
                   onprev={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
                   onnext={() => nextEpisode && goToEpisode(nextEpisode.episode_number)}
                   onended={() => onNativePlayerEnded()}
+                  onfullscreen={fullscreenFrame}
                 />
               {/if}
             {:else if selectedServer === "embed_vidsrc_cc"}
@@ -2051,3 +2053,45 @@
     </section>
   </div>
 {/if}
+
+<style>
+  :global(:fullscreen),
+  :global(:-webkit-full-screen) {
+    background: #000 !important;
+  }
+
+  .player-stage-box:fullscreen,
+  .player-stage-box:-webkit-full-screen,
+  .player-stage-box.is-fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    aspect-ratio: auto !important;
+    border-radius: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: #000 !important;
+    z-index: 999999 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .player-stage-box:fullscreen iframe,
+  .player-stage-box:-webkit-full-screen iframe,
+  .player-stage-box.is-fullscreen iframe,
+  .player-stage-box:fullscreen :global(.player-container),
+  .player-stage-box:-webkit-full-screen :global(.player-container),
+  .player-stage-box.is-fullscreen :global(.player-container) {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border: none !important;
+    border-radius: 0 !important;
+    object-fit: contain !important;
+  }
+</style>
