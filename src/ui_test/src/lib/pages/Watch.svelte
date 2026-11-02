@@ -115,6 +115,9 @@
     } catch {
       // ignore
     }
+    if (settings.current.auto_fullscreen && !document.fullscreenElement) {
+      void frameBox?.requestFullscreen().catch(() => undefined);
+    }
   }
 
   let selectedServer = $state<StreamServer>(getStoredServer());
@@ -411,16 +414,56 @@
     }
   });
 
-  // Fullscreen event listener to sync state across episodes and Megaplay bridge
+  // Fullscreen event listener to sync state across episodes
   $effect(() => {
     const handleFsChange = () => {
       isFullscreen = document.fullscreenElement !== null;
-      sendToPlayer({ megaFullscreenState: isFullscreen });
+    };
+    const handleKeydown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        fullscreenFrame();
+      }
+    };
+    // If auto_fullscreen is on, trigger on first user interaction (click/touch/key)
+    const handleFirstGesture = () => {
+      if (settings.current.auto_fullscreen && !document.fullscreenElement) {
+        void frameBox?.requestFullscreen().catch(() => undefined);
+      }
     };
     document.addEventListener("fullscreenchange", handleFsChange);
+    window.addEventListener("keydown", handleKeydown);
+    window.addEventListener("pointerdown", handleFirstGesture, { capture: true, passive: true });
     return () => {
       document.removeEventListener("fullscreenchange", handleFsChange);
+      window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("pointerdown", handleFirstGesture, { capture: true });
     };
+  });
+
+  // Automatically keep focus on the video stage box so 'F' and shortcuts work instantly
+  $effect(() => {
+    void episodeId;
+    void selectedServer;
+    const t = setTimeout(() => {
+      frameBox?.focus();
+    }, 150);
+    return () => clearTimeout(t);
+  });
+
+  // Re-claim focus whenever iframe takes it, so 'F' key and keyboard shortcuts always fire
+  $effect(() => {
+    const handleBlur = () => {
+      if (document.activeElement === playerFrame) {
+        setTimeout(() => {
+          frameBox?.focus();
+        }, 80);
+      }
+    };
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
   });
 
   // User-gesture fullscreen for the frame itself
@@ -447,7 +490,11 @@
   }
 
   function toggleAutoFullscreen(): void {
-    void settings.save({ auto_fullscreen: !settings.current.auto_fullscreen });
+    const next = !settings.current.auto_fullscreen;
+    void settings.save({ auto_fullscreen: next });
+    if (next && !document.fullscreenElement) {
+      void frameBox?.requestFullscreen().catch(() => undefined);
+    }
   }
 
   // Best-effort: entering fullscreen without a click is blocked by most
@@ -636,18 +683,7 @@
         megaFullscreenState?: boolean;
       };
 
-      if (msg.megaCommand === "toggleFullscreen") {
-        fullscreenFrame();
-        return;
-      }
-      if (msg.megaCommand === "getFullscreenState") {
-        sendToPlayer({ megaFullscreenState: Boolean(document.fullscreenElement) });
-        return;
-      }
-
       if (msg.event === "PLAYER_READY") {
-        sendSkipData();
-        sendToPlayer({ megaFullscreenState: Boolean(document.fullscreenElement) });
         sendSkipData();
         if (resumePos > 30) {
           sendToPlayer({ cmd: "SEEK", value: resumePos });
@@ -731,22 +767,7 @@
     };
   });
 
-  // In-place episode dispatcher for Server 1 so the iframe never unmounts in fullscreen
-  $effect(() => {
-    const epNum = episodeId;
-    const mId = malId;
-    if (selectedServer === "embed_animekai" && playerFrame?.contentWindow && epNum > 0) {
-      playerFrame.contentWindow.postMessage(
-        JSON.stringify({
-          cmd: "LOAD_EPISODE",
-          ep: epNum,
-          mal: mId,
-          cat: "sub"
-        }),
-        "*"
-      );
-    }
-  });
+
 
   $effect(() => {
     const aId = animeId;
@@ -943,6 +964,9 @@
 
   function goToEpisode(epNum: number): void {
     router.go(`/watch/${animeId}/${epNum}`);
+    if (settings.current.auto_fullscreen && !document.fullscreenElement) {
+      void frameBox?.requestFullscreen().catch(() => undefined);
+    }
   }
 
   // Smooth scroll current episode into view in the sidebar list
@@ -1225,11 +1249,85 @@
       >
         <!-- Video Player Box (Properly contained, not blown up full screen before fullscreen!) -->
         <div class="relative">
+          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
           <div
             bind:this={frameBox}
             bind:clientWidth={cropW}
-            class="player-stage-box relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black shadow-2xl ring-1 ring-white/10 group {isFullscreen ? 'is-fullscreen' : ''}"
+            tabindex="0"
+            role="region"
+            aria-label="Video Player Stage"
+            onmouseenter={() => frameBox?.focus()}
+            onpointermove={() => {
+              if (document.activeElement !== frameBox) frameBox?.focus();
+            }}
+            onclick={() => {
+              frameBox?.focus();
+              if (settings.current.auto_fullscreen && !document.fullscreenElement) {
+                void frameBox?.requestFullscreen().catch(() => undefined);
+              }
+            }}
+            class="player-stage-box relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black shadow-2xl ring-1 ring-white/10 group focus:outline-none"
           >
+            <!-- Auto-Fullscreen prompt banner if browser blocked silent auto-fullscreen -->
+            {#if settings.current.auto_fullscreen && !isFullscreen}
+              <button
+                type="button"
+                class="absolute top-3 left-3 z-30 inline-flex items-center gap-1.5 rounded-xl bg-primary/90 px-3 py-1.5 text-xs font-bold text-primary-foreground backdrop-blur-md shadow-lg transition-transform hover:scale-105 cursor-pointer animate-pulse"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  fullscreenFrame();
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+                <span>Click for Fullscreen</span>
+              </button>
+            {/if}
+
+            <!-- Quick Video-Stage Fullscreen Button (Top Right) -->
+            <button
+              type="button"
+              class="absolute top-3 right-3 z-30 flex h-9 w-9 items-center justify-center rounded-xl bg-black/80 text-white backdrop-blur-md border border-white/20 opacity-80 hover:opacity-100 transition-all duration-200 hover:bg-black hover:scale-105 shadow-xl cursor-pointer"
+              onclick={(e) => {
+                e.stopPropagation();
+                frameBox?.focus();
+                fullscreenFrame();
+              }}
+              title={isFullscreen ? "Exit Fullscreen (F)" : "Video Fullscreen (F)"}
+            >
+              {#if isFullscreen}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+                </svg>
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-4 w-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+              {/if}
+            </button>
+
+            <!-- Video-Stage Fullscreen Button (Bottom Right over controls corner) -->
+            <button
+              type="button"
+              class="absolute bottom-2.5 right-2.5 z-30 flex h-8 w-8 items-center justify-center rounded-lg bg-black/80 text-white backdrop-blur-md border border-white/20 opacity-70 hover:opacity-100 transition-all duration-200 hover:bg-black hover:scale-105 shadow-xl cursor-pointer"
+              onclick={(e) => {
+                e.stopPropagation();
+                frameBox?.focus();
+                fullscreenFrame();
+              }}
+              title={isFullscreen ? "Exit Fullscreen (F)" : "Continuous Fullscreen (F)"}
+            >
+              {#if isFullscreen}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+                </svg>
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-3.5 w-3.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+              {/if}
+            </button>
             <!-- In-place viewing stream loader -->
             {#if streamLoading}
               <div class="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/85 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
@@ -2109,8 +2207,7 @@
   }
 
   .player-stage-box:fullscreen,
-  .player-stage-box:-webkit-full-screen,
-  .player-stage-box.is-fullscreen {
+  .player-stage-box:-webkit-full-screen {
     width: 100vw !important;
     height: 100vh !important;
     max-width: 100vw !important;
@@ -2130,10 +2227,8 @@
 
   .player-stage-box:fullscreen iframe,
   .player-stage-box:-webkit-full-screen iframe,
-  .player-stage-box.is-fullscreen iframe,
   .player-stage-box:fullscreen :global(.player-container),
-  .player-stage-box:-webkit-full-screen :global(.player-container),
-  .player-stage-box.is-fullscreen :global(.player-container) {
+  .player-stage-box:-webkit-full-screen :global(.player-container) {
     width: 100vw !important;
     height: 100vh !important;
     max-width: 100vw !important;

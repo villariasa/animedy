@@ -26,75 +26,29 @@
       })();
     </script>
     <style>
-      html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+      html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
       iframe { display: block; width: 100%; height: 100%; border: 0; }
     </style>
   </head>
   <body>
     <script>
       const params = new URLSearchParams(location.search);
-      let directSrc = params.get("src");
-      let mal = parseInt(params.get("mal") || "0", 10);
-      let ep = parseInt(params.get("ep") || "0", 10);
-      let cat = params.get("cat") === "dub" ? "dub" : "sub";
-      let frame = null;
-
-      function getUrl(m, e, c, auto) {
-        return directSrc ? directSrc : "https://megaplay.buzz/stream/mal/" + m + "/" + e + "/" + c + "?autostart=" + (auto ? "true" : "false");
-      }
-
+      const directSrc = params.get("src");
+      const mal = parseInt(params.get("mal") || "0", 10);
+      const ep = parseInt(params.get("ep") || "0", 10);
+      const cat = params.get("cat") === "dub" ? "dub" : "sub";
       if (directSrc || (mal > 0 && ep > 0)) {
-        frame = document.createElement("iframe");
-        frame.src = getUrl(mal, ep, cat, false);
+        const frame = document.createElement("iframe");
+        frame.src = directSrc ? directSrc : `https://megaplay.buzz/stream/mal/${mal}/${ep}/${cat}?autostart=false`;
         frame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen";
         frame.setAttribute("allowfullscreen", "");
         document.body.appendChild(frame);
-
-        function syncFs(active) {
-          try {
-            frame.contentWindow.postMessage(JSON.stringify({ megaFullscreenState: Boolean(active) }), "*");
-          } catch(e) {}
-        }
-
-        frame.addEventListener("load", function() {
-          syncFs(false);
-          try {
-            window.parent.postMessage(JSON.stringify({ megaCommand: "getFullscreenState" }), "*");
-          } catch(e) {}
-        });
-
-        // Relay messages both ways and handle in-place episode switches without unmounting
-        window.addEventListener("message", function(ev) {
+        // Relay the player's postMessage bridge both ways:
+        // player → our app (events), our app → player (commands).
+        window.addEventListener("message", (ev) => {
           if (ev.source === frame.contentWindow) {
-            let data = ev.data;
-            if (typeof data === "string") {
-              try { data = JSON.parse(data); } catch(e) {}
-            }
-            if (data && data.megaCommand === "getFullscreenState") {
-              window.parent.postMessage(JSON.stringify({ megaCommand: "getFullscreenState" }), "*");
-              return;
-            }
-            if (data && data.megaCommand === "toggleFullscreen") {
-              window.parent.postMessage(JSON.stringify({ megaCommand: "toggleFullscreen" }), "*");
-              return;
-            }
             window.parent.postMessage(ev.data, "*");
           } else if (ev.source === window.parent) {
-            let data = ev.data;
-            if (typeof data === "string") {
-              try { data = JSON.parse(data); } catch(e) {}
-            }
-            if (data && data.cmd === "LOAD_EPISODE") {
-              mal = data.mal || mal;
-              ep = data.ep;
-              cat = data.cat || cat;
-              frame.src = getUrl(mal, ep, cat, true);
-              return;
-            }
-            if (data && typeof data.megaFullscreenState === "boolean") {
-              syncFs(data.megaFullscreenState);
-              return;
-            }
             frame.contentWindow.postMessage(ev.data, "*");
           }
         });
