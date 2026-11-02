@@ -27,6 +27,7 @@
   let anime = $state<AnimeDetails | null>(null);
   let episodes = $state<EpisodeListItem[]>([]);
   let loading = $state(true);
+  let streamLoading = $state(false);
   let error = $state<string | null>(null);
 
   // Layout & View Mode States
@@ -364,7 +365,7 @@
     // containing that string (decrypted from its own config) and injects
     // NO ad script for them. Ad-free without sandbox, so no detector fires.
     embed_animekai: `/anichi.to.html?mal=${malId ?? 0}&ep=${episodeId}&cat=sub`,
-    embed_animix: animixUrl ?? "",
+    embed_animix: animixUrl ? `/api/server2/player?u=${encodeURIComponent(animixUrl)}` : "",
     native_resolver: "",
     embed_vidsrc_cc: server4Url ?? "",
   });
@@ -627,18 +628,59 @@
         }
       } else if (msg.event === "CURRENT_TIME") {
         const time = Number(msg.time) || 0;
-        const dur = Number(msg.duration) || 0;
-        if (dur > 0 && time > 0) {
-          realPos = time;
-          realDur = dur;
-          pollCount += 1;
-          if (pollCount % 5 === 0) {
-            void saveRealProgress(time, dur, false);
-            sendSkipData();
-          }
-          if (!endedFired && dur > 120 && time >= dur - 2) {
+        const dur = Number(msg.duration) || (realDur > 0 ? realDur : 0);
+
+        if (dur > 0) {
+          // 1. Detect player looping or resetting to 0:00 after reaching the end
+          const isVideoLoopedOrReset =
+            !endedFired &&
+            realPos > 60 &&
+            dur > 60 &&
+            realPos >= dur * 0.75 &&
+            time < 10;
+
+          if (isVideoLoopedOrReset) {
             endedFired = true;
-            void onEpisodeEnded(time, dur);
+            void onEpisodeEnded(dur, dur);
+            return;
+          }
+
+          if (time > 0) {
+            realPos = time;
+            realDur = dur;
+            pollCount += 1;
+            if (pollCount % 5 === 0) {
+              void saveRealProgress(time, dur, false);
+              sendSkipData();
+            }
+
+            // 2. Outro skip detection
+            const outroStart = effectiveOutro ? effectiveOutro[0] : null;
+            const outroEnd = effectiveOutro ? effectiveOutro[1] : null;
+
+            if (settings.current.auto_skip_outro && outroStart !== null && outroEnd !== null) {
+              // Does this outro segment run until (or within 12s of) the end of the video?
+              const outroGoesToEnd = outroEnd >= (dur - 12) || (dur - outroEnd) <= 12;
+
+              if (outroGoesToEnd) {
+                // If the outro leads directly to the end of the episode (no post-credits clip),
+                // as soon as playback enters the outro, auto-skip means the episode is finished!
+                if (!endedFired && time >= (outroStart - 1)) {
+                  endedFired = true;
+                  sendToPlayer({ cmd: "PLAY_TOGGLE" }); // pause frame to prevent loop restart
+                  void onEpisodeEnded(dur, dur);
+                  return;
+                }
+              }
+            }
+
+            // 3. Normal stream end detection (end of video or end of post-credits scene)
+            const isAtStreamEnd = dur > 60 && time >= (dur - 3);
+
+            if (!endedFired && isAtStreamEnd) {
+              endedFired = true;
+              void onEpisodeEnded(time, dur);
+            }
           }
         }
       }
@@ -649,7 +691,7 @@
       if (pollCount === 0) {
         sendSkipData();
       }
-    }, 2000);
+    }, 1000);
     return () => {
       window.removeEventListener("message", onMsg);
       clearInterval(poll);
@@ -686,46 +728,64 @@
   }
 
   async function loadEpisode(aId: number, epNum: number): Promise<void> {
-    loading = true;
-    error = null;
+    const isSameAnime = anime !== null && anime.id === aId;
+
+    if (!isSameAnime) {
+      loading = true;
+      error = null;
+    } else {
+      streamLoading = true;
+    }
+
     try {
       await settings.load();
-      anime = await getAnimeDetails(aId);
-      episodes = buildEpisodes(anime);
-      if (episodes.length > 0 && epNum > episodes.length) {
-        router.go(`/watch/${aId}/${episodes.length}`);
-        return;
-      }
-      void getEpisodeMedia(
-        aId,
-        anime.mal_id,
-        anime.title_english || anime.title_romaji,
-        anime.start_date,
-        anime.season_year,
-        anime.episode_count,
-      ).then((media) => {
-        episodes = episodes.map((ep) => {
-          const info = media.get(ep.episode_number);
-          return {
-            ...ep,
-            thumbnail: info?.thumbnail ?? ep.thumbnail,
-            title: info?.title ?? ep.title ?? `Episode ${ep.episode_number}`,
-            air_date: info?.air_date ?? ep.air_date,
-          };
+
+      if (!isSameAnime) {
+        anime = await getAnimeDetails(aId);
+        episodes = buildEpisodes(anime);
+        if (episodes.length > 0 && epNum > episodes.length) {
+          router.go(`/watch/${aId}/${episodes.length}`);
+          return;
+        }
+        void getEpisodeMedia(
+          aId,
+          anime.mal_id,
+          anime.title_english || anime.title_romaji,
+          anime.start_date,
+          anime.season_year,
+          anime.episode_count,
+        ).then((media) => {
+          episodes = episodes.map((ep) => {
+            const info = media.get(ep.episode_number);
+            return {
+              ...ep,
+              thumbnail: info?.thumbnail ?? ep.thumbnail,
+              title: info?.title ?? ep.title ?? `Episode ${ep.episode_number}`,
+              air_date: info?.air_date ?? ep.air_date,
+            };
+          });
         });
-      });
+      } else {
+        if (episodes.length > 0 && epNum > episodes.length) {
+          router.go(`/watch/${aId}/${episodes.length}`);
+          return;
+        }
+      }
+
       animixUrl = await findAnimixEpisode(epNum);
       void loadServer4Stream(aId, epNum);
+      if (selectedServer === "native_resolver") {
+        void loadServer3Stream(aId, epNum);
+      }
+
       const preferred = getStoredServer();
       if (preferred === "embed_animix") {
         selectedServer = animixUrl
           ? "embed_animix"
-          : anime.mal_id !== null
-            ? "embed_animekai"
-            : "native_resolver";
+          : (anime?.mal_id !== null ? "embed_animekai" : "native_resolver");
       } else if (preferred === "embed_animekai") {
         selectedServer =
-          anime.mal_id !== null
+          (anime?.mal_id !== null)
             ? "embed_animekai"
             : animixUrl
               ? "embed_animix"
@@ -733,10 +793,11 @@
       } else {
         selectedServer = preferred;
       }
+
       // Intro/outro windows from AniSkip for the player bridge.
       skipIntroState = null;
       skipOutroState = null;
-      if (anime.mal_id !== null) {
+      if (anime?.mal_id !== null && anime?.mal_id !== undefined) {
         const segs = await getSkipSegments(
           anime.mal_id,
           epNum,
@@ -763,9 +824,12 @@
       await registerInHistory(aId, epNum);
       await refreshWatched(aId);
     } catch (err) {
-      error = err instanceof ApiError ? err.message : "Failed to load episode.";
+      if (!isSameAnime) {
+        error = err instanceof ApiError ? err.message : "Failed to load episode.";
+      }
     } finally {
       loading = false;
+      streamLoading = false;
     }
   }
 
@@ -882,7 +946,7 @@
   </button>
 {/if}
 
-{#if loading}
+{#if loading && !anime}
   <div class="flex flex-col items-center justify-center py-28">
     <div
       class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent shadow-lg"
@@ -891,7 +955,7 @@
       Loading anime stream & episodes…
     </p>
   </div>
-{:else if error}
+{:else if error && !anime}
   <div class="mx-auto max-w-md py-20 text-center">
     <div
       class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/15 text-destructive mb-3"
@@ -1119,13 +1183,25 @@
             bind:clientWidth={cropW}
             class="relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black shadow-2xl ring-1 ring-white/10 group"
           >
-            {#if selectedServer === "embed_animix" && animixUrl}
+            <!-- In-place viewing stream loader -->
+            {#if streamLoading}
+              <div class="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/85 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+                <div class="h-10 w-10 animate-spin rounded-full border-3 border-primary border-t-transparent shadow-lg"></div>
+                <p class="mt-3 text-sm font-semibold text-slate-200 animate-pulse">
+                  Loading Episode {episodeId}…
+                </p>
+              </div>
+            {/if}
+
+            {#key `${selectedServer}-${episodeId}`}
+              {#if selectedServer === "embed_animix" && animixUrl}
               <iframe
-                src={animixUrl}
+                src={`/api/server2/player?u=${encodeURIComponent(animixUrl)}`}
                 title="{animeTitle} - {episodeLabel}"
                 class="border-0"
                 style="width:{AMX.viewport}px;height:1200px;transform:scale({amxScale}) translate({-AMX.x}px, {-AMX.y}px);transform-origin:0 0;"
                 scrolling="no"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                 allowfullscreen
               ></iframe>
@@ -1157,6 +1233,7 @@
                   skipSegments={nativeSkipSegments}
                   autoSkipIntro={settings.current.auto_skip_intro}
                   autoSkipOutro={settings.current.auto_skip_outro}
+                  autoNext={settings.current.auto_next}
                   autoFullscreen={settings.current.auto_fullscreen}
                   autoPlay={settings.current.autoplay}
                   onprev={() => prevEpisode && goToEpisode(prevEpisode.episode_number)}
@@ -1202,6 +1279,7 @@
                 allowfullscreen
               ></iframe>
             {/if}
+          {/key}
           </div>
         </div>
 

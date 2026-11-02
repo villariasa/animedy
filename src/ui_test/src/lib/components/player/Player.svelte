@@ -337,7 +337,11 @@
         (seg.skip_type === "outro" && autoSkipOutro) ||
         (seg.skip_type === "recap" && autoSkipIntro);
       if (auto) {
-        seekTo(seg.end_seconds);
+        if (seg.skip_type === "outro" && autoNext && canNext) {
+          onended?.();
+        } else {
+          seekTo(seg.end_seconds);
+        }
       }
     }
   });

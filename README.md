@@ -328,7 +328,7 @@ You have three convenient ways to run the project depending on what you are work
 Starts both the Hono backend server and Vite frontend server with live hot-reloading:
 
 ```bash
-./run.sh
+./run.sh (or run.bat on Windows)
 ```
 > Press <kbd>Ctrl</kbd> + <kbd>C</kbd> at any time to gracefully shut down both servers.
 
