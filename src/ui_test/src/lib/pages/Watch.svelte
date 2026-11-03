@@ -326,6 +326,14 @@
   let server4Url = $state<string | null>(null);
   let server4Loading = $state(false);
 
+  // Server 1 and Server 4 (when it resolves to the same megaplay stream)
+  // share the anichi.to.html bridge, which lets us drive PLAY/SEEK/etc. from
+  // the parent page via postMessage — used for arrow-key seeking below.
+  let usesAnichiBridge = $derived(
+    selectedServer === "embed_animekai" ||
+      (selectedServer === "embed_vidsrc_cc" && Boolean(server4Url?.includes("anichi.to.html"))),
+  );
+
   async function loadServer4Stream(aId: number, epNum: number): Promise<void> {
     if (!anime) return;
     server4Url = null;
@@ -425,9 +433,23 @@
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
         fullscreenFrame();
+      } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        // Seeking only works for servers speaking the anichi.to.html bridge —
+        // other iframes run a third-party player we have no protocol to
+        // control, so their own in-frame controls must handle arrow keys
+        // (which requires the iframe to keep keyboard focus; see below).
+        if (usesAnichiBridge) {
+          e.preventDefault();
+          const delta = e.key === "ArrowRight" ? 10 : -10;
+          const target = Math.max(0, realPos + delta);
+          sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
+          realPos = target;
+        }
       }
     };
-    // If auto_fullscreen is on, trigger on first user interaction (click/touch/key)
+    // If auto_fullscreen is on, trigger once on the first tap/click inside the
+    // player stage itself (not anywhere on the page — a global listener here
+    // would re-enter fullscreen on every unrelated click, trapping the user).
     const handleFirstGesture = () => {
       if (settings.current.auto_fullscreen && !document.fullscreenElement) {
         void frameBox?.requestFullscreen().catch(() => undefined);
@@ -435,11 +457,11 @@
     };
     document.addEventListener("fullscreenchange", handleFsChange);
     window.addEventListener("keydown", handleKeydown);
-    window.addEventListener("pointerdown", handleFirstGesture, { capture: true, passive: true });
+    frameBox?.addEventListener("pointerdown", handleFirstGesture, { once: true, passive: true });
     return () => {
       document.removeEventListener("fullscreenchange", handleFsChange);
       window.removeEventListener("keydown", handleKeydown);
-      window.removeEventListener("pointerdown", handleFirstGesture, { capture: true });
+      frameBox?.removeEventListener("pointerdown", handleFirstGesture);
     };
   });
 
@@ -456,7 +478,7 @@
   // Re-claim focus whenever iframe takes it, so 'F' key and keyboard shortcuts always fire
   $effect(() => {
     const handleBlur = () => {
-      if (document.activeElement === playerFrame) {
+      if (usesAnichiBridge && document.activeElement === playerFrame) {
         setTimeout(() => {
           frameBox?.focus();
         }, 80);
@@ -646,16 +668,14 @@
 
   $effect(() => {
     void episodeId;
-    const server = selectedServer;
+    void selectedServer;
+    void server4Url;
     // Server 4 routes through the SAME anichi.to.html bridge as Server 1
     // whenever 9anime.si resolves to a megaplay.buzz stream — it relays the
     // identical PLAYER_READY/GET_TIME/SEEK/SKP_DATA postMessage protocol, so
     // autoplay/auto-skip/auto-next/resume all work there too. The other
     // server4 path (/api/server4/player, raw third-party player HTML with no
     // bridge) gets none of this — there's no protocol to speak to it.
-    const usesAnichiBridge =
-      server === "embed_animekai" ||
-      (server === "embed_vidsrc_cc" && Boolean(server4Url?.includes("anichi.to.html")));
     endedFired = false;
     pollCount = 0;
     realPos = 0;
@@ -1262,9 +1282,6 @@
             }}
             onclick={() => {
               frameBox?.focus();
-              if (settings.current.auto_fullscreen && !document.fullscreenElement) {
-                void frameBox?.requestFullscreen().catch(() => undefined);
-              }
             }}
             class="player-stage-box relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black shadow-2xl ring-1 ring-white/10 group focus:outline-none"
           >
