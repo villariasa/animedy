@@ -1,10 +1,37 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { apiGetSiteLove, apiToggleSiteLove } from "$lib/api/account";
+
+  const STORAGE_KEY_LOVED = "animedy.site_loved";
+  const DEFAULT_LOVE_COUNT = 1342;
+
   let copied = $state(false);
   let loved = $state(false);
-  let loveCount = $state(1342);
+  let loveCount = $state(DEFAULT_LOVE_COUNT);
+  let isToggling = $state(false);
 
   const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://animedy.pages.dev";
   const shareText = "Stream continuous, ad-free anime in HD on Animedy!";
+
+  onMount(() => {
+    // Quick local storage cache to avoid UI flicker
+    try {
+      if (localStorage.getItem(STORAGE_KEY_LOVED) === "1") {
+        loved = true;
+      }
+    } catch {}
+
+    // Fetch live count and real status from Cloudflare D1
+    apiGetSiteLove()
+      .then((res) => {
+        loveCount = res.count;
+        loved = res.loved;
+        try {
+          localStorage.setItem(STORAGE_KEY_LOVED, res.loved ? "1" : "0");
+        } catch {}
+      })
+      .catch(() => undefined);
+  });
 
   function copyLink(): void {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -15,13 +42,36 @@
     }
   }
 
-  function toggleLove(): void {
-    if (!loved) {
-      loved = true;
-      loveCount += 1;
-    } else {
-      loved = false;
-      loveCount -= 1;
+  async function toggleLove(): Promise<void> {
+    if (isToggling) return;
+    isToggling = true;
+
+    // Optimistic UI update
+    const previousLoved = loved;
+    const previousCount = loveCount;
+    loved = !previousLoved;
+    loveCount = loved ? loveCount + 1 : Math.max(DEFAULT_LOVE_COUNT, loveCount - 1);
+
+    try {
+      localStorage.setItem(STORAGE_KEY_LOVED, loved ? "1" : "0");
+    } catch {}
+
+    try {
+      const res = await apiToggleSiteLove(loved ? "love" : "unlove");
+      loveCount = res.count;
+      loved = res.loved;
+      try {
+        localStorage.setItem(STORAGE_KEY_LOVED, res.loved ? "1" : "0");
+      } catch {}
+    } catch {
+      // Revert if network failed
+      loved = previousLoved;
+      loveCount = previousCount;
+      try {
+        localStorage.setItem(STORAGE_KEY_LOVED, previousLoved ? "1" : "0");
+      } catch {}
+    } finally {
+      isToggling = false;
     }
   }
 

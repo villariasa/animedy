@@ -67,7 +67,7 @@
       </button>
     </div>
     <p class="mt-1 text-xs text-muted-foreground">
-      Goes straight to the site admin. Posting as
+      Goes straight to the Animedy team. Posting as
       <span class="font-medium text-foreground">{postingAs}</span>{auth.isLoggedIn ? "" : " (guest)"}.
     </p>
 

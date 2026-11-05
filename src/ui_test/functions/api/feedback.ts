@@ -2,6 +2,7 @@ import type { Env, PagesFunction } from "./_lib/types";
 import { ok, fail, readJson } from "./_lib/http";
 import { verifyToken } from "./_lib/auth";
 import { asOptionalString } from "./_lib/validate";
+import { notifyAdmins } from "./_lib/push";
 
 const MAX_BODY_CHARS = 1000;
 
@@ -41,6 +42,9 @@ export const onRequestPost: PagesFunction = async (context) => {
   )
     .bind(userId, nickname, clientId, text)
     .run();
+
+  // Wake every admin device (push works even with the PWA closed).
+  context.waitUntil(notifyAdmins(env, env.DB));
 
   return ok({ sent: true }, "Thanks for the feedback!", 201);
 };

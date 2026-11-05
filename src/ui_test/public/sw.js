@@ -74,8 +74,9 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
       let title = "Animedy Admin";
-      let body = "New password reset request — open the admin dashboard to review it.";
+      let body = "New activity — open the admin dashboard to review it.";
       let url = "/#/admin";
+      let matchedAnnouncement = false;
       try {
         const res = await fetch("/api/announcements/latest", { cache: "no-store" });
         const json = await res.json();
@@ -86,10 +87,26 @@ self.addEventListener("push", (event) => {
             title = a.title;
             body = a.body;
             url = "/";
+            matchedAnnouncement = true;
           }
         }
       } catch (_) {
         // offline or API hiccup — fall through to the generic admin alert
+      }
+      if (!matchedAnnouncement) {
+        // Admin-only wake-up: ask what kind of event it was (type only).
+        try {
+          const res = await fetch("/api/push/event", { cache: "no-store" });
+          const json = await res.json();
+          const type = json && json.data && json.data.type;
+          if (type === "feedback") {
+            body = "New feedback received — open the admin dashboard to read it.";
+          } else if (type === "reset") {
+            body = "New password reset request — open the admin dashboard to review it.";
+          }
+        } catch (_) {
+          // keep the generic text
+        }
       }
       return self.registration.showNotification(title, {
         body,

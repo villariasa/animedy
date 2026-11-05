@@ -332,3 +332,29 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback (created_at);
+
+-- ============================================================
+-- 21. site_counters & site_reactions (Site Love Count & Reactions)
+--     1342 initial base count record; guests & users can love/toggle.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS site_counters (
+  name TEXT PRIMARY KEY,
+  base_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO site_counters (name, base_count) VALUES ('site_love', 1342);
+
+CREATE TABLE IF NOT EXISTS site_reactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id TEXT NOT NULL,
+  user_id INTEGER,
+  reaction TEXT NOT NULL DEFAULT 'love',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (client_id, reaction),
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_reactions_reaction ON site_reactions (reaction);
+CREATE INDEX IF NOT EXISTS idx_site_reactions_user ON site_reactions (user_id);
+

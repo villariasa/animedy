@@ -530,3 +530,23 @@ export async function apiUploadAvatar(file: File): Promise<{ avatar_url: string 
 export function apiDeleteAvatar(): Promise<{ avatar_url: null }> {
   return request("/api/user/avatar", { method: "DELETE" });
 }
+
+// ---------- site love / reaction count ----------
+
+export interface SiteLoveResponse {
+  count: number;
+  loved: boolean;
+}
+
+export function apiGetSiteLove(): Promise<SiteLoveResponse> {
+  const clientId = getClientId();
+  return request<SiteLoveResponse>(`/api/site/love?client_id=${encodeURIComponent(clientId)}`);
+}
+
+export function apiToggleSiteLove(action?: "love" | "unlove" | "toggle"): Promise<SiteLoveResponse> {
+  return request<SiteLoveResponse>("/api/site/love", {
+    method: "POST",
+    body: { client_id: getClientId(), action: action ?? "toggle" },
+  });
+}
+
