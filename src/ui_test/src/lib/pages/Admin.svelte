@@ -10,6 +10,9 @@
     apiAnnounce,
     apiAdminFeedback,
     apiAdminDeleteFeedback,
+    apiPushStatus,
+    apiPushTest,
+    type PushStatus,
     type FeedbackEntry,
     type AdminSession,
     type AdminUser,
@@ -32,10 +35,29 @@
   let pushEnabled = $state(false);
   let pushBusy = $state(false);
   let pushNote = $state("");
+  let pushStatus = $state<PushStatus | null>(null);
+  let pushTestBusy = $state(false);
+
+  async function loadPushStatus(): Promise<void> {
+    pushStatus = await apiPushStatus().catch(() => null);
+  }
+
+  async function firePushTest(target: "admins" | "everyone"): Promise<void> {
+    pushTestBusy = true;
+    try {
+      await apiPushTest(target);
+      pushNote = `Test push fired to ${target} — a notification should pop on subscribed devices within seconds.`;
+    } catch (err) {
+      pushNote = err instanceof Error ? err.message : "Test failed";
+    } finally {
+      pushTestBusy = false;
+    }
+  }
 
   $effect(() => {
     if (!auth.isAdmin) return;
     void currentPushSubscription().then((sub) => (pushEnabled = sub !== null));
+    void loadPushStatus();
   });
 
   async function togglePush(): Promise<void> {
@@ -178,6 +200,42 @@
     </div>
     {#if pushNote}
       <p class="mt-2 text-xs text-muted-foreground">{pushNote}</p>
+    {/if}
+
+    <!-- Push diagnostics — the first stop when "notifications aren't working" -->
+    {#if pushStatus}
+      <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card/60 px-4 py-2.5 text-xs">
+        <span class={pushStatus.vapid_configured ? "text-emerald-400" : "text-red-400 font-semibold"}>
+          {pushStatus.vapid_configured
+            ? "✓ Push keys configured"
+            : "✗ VAPID keys NOT set — no push can be delivered until VAPID_PRIVATE_JWK + VAPID_PUBLIC_KEY are set in the Pages env"}
+        </span>
+        <span class="text-muted-foreground">
+          Subscribed devices: <span class="font-semibold text-foreground">{pushStatus.subscriptions_total}</span>
+          (admin: {pushStatus.subscriptions_admin})
+        </span>
+        {#if pushStatus.subscriptions_total === 0}
+          <span class="text-amber-400">No device has enabled notifications yet — nothing to deliver to.</span>
+        {/if}
+        <span class="ml-auto flex gap-1.5">
+          <button
+            type="button"
+            disabled={pushTestBusy}
+            onclick={() => void firePushTest("admins")}
+            class="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            Test → admins
+          </button>
+          <button
+            type="button"
+            disabled={pushTestBusy}
+            onclick={() => void firePushTest("everyone")}
+            class="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            Test → everyone
+          </button>
+        </span>
+      </div>
     {/if}
 
     {#if errorMessage}

@@ -14,10 +14,10 @@ import {
 import { ApiError } from "$lib/api/client";
 
 const POLL_OPEN_MS = 4_000;
-// Background polling while the panel is closed keeps the unread badge live.
-// Slow on purpose: the GET is edge-cached, so this is one cheap request per
-// device per 30s, most of them CDN cache hits.
-const POLL_CLOSED_MS = 30_000;
+// Background polling while the panel is closed keeps the unread badge live
+// without a reload. 10s feels near-instant; the GET is edge-cached (3s), so
+// most of these are CDN cache hits that never touch the function or D1.
+const POLL_CLOSED_MS = 10_000;
 const MAX_IN_MEMORY = 200;
 const LAST_READ_KEY = "animedy.chat_last_read";
 
@@ -53,10 +53,18 @@ class ChatStore {
     void apiChatTyping().catch(() => undefined);
   }
 
+  private initialized = false;
+
   /** Called once from GlobalChat on mount — starts the background poll so the
    * unread badge works before the panel is ever opened. */
   init(): void {
+    if (this.initialized) return;
+    this.initialized = true;
     this.startPolling();
+    // Coming back to the tab → check immediately instead of waiting a tick.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void this.poll();
+    });
   }
 
   toggle(): void {

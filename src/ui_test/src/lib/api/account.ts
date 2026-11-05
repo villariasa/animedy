@@ -386,6 +386,22 @@ export function apiAdminResolveReset(id: number, action: "approve" | "deny"): Pr
   return request(`/api/admin/password-resets/${id}`, { method: "PUT", body: { action } });
 }
 
+// ---------- push diagnostics ----------
+
+export interface PushStatus {
+  vapid_configured: boolean;
+  subscriptions_total: number;
+  subscriptions_admin: number;
+}
+
+export function apiPushStatus(): Promise<PushStatus> {
+  return request("/api/admin/push-status");
+}
+
+export function apiPushTest(target: "admins" | "everyone"): Promise<unknown> {
+  return request("/api/admin/push-status", { method: "POST", body: { target } });
+}
+
 // ---------- feedback ----------
 
 const GUEST_NICK_KEY = "animedy.guest_nick";
