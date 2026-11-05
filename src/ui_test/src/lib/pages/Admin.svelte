@@ -5,12 +5,27 @@
   import {
     apiAdminActivity,
     apiAdminUsers,
+    apiAdminResetRequests,
+    apiAdminResolveReset,
     type AdminSession,
-    type AdminUser
+    type AdminUser,
+    type PasswordResetRequest
   } from "$lib/api/account";
 
   let sessions = $state<AdminSession[]>([]);
   let users = $state<AdminUser[]>([]);
+  let resetRequests = $state<PasswordResetRequest[]>([]);
+
+  async function resolveReset(id: number, action: "approve" | "deny"): Promise<void> {
+    try {
+      await apiAdminResolveReset(id, action);
+      resetRequests = resetRequests.map((r) =>
+        r.id === id ? { ...r, status: action === "approve" ? "approved" : "denied" } : r
+      );
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : "Action failed";
+    }
+  }
   let loading = $state(true);
   let errorMessage = $state("");
 
@@ -20,9 +35,14 @@
   async function refresh(): Promise<void> {
     errorMessage = "";
     try {
-      const [activity, usersRes] = await Promise.all([apiAdminActivity(), apiAdminUsers()]);
+      const [activity, usersRes, resets] = await Promise.all([
+        apiAdminActivity(),
+        apiAdminUsers(),
+        apiAdminResetRequests()
+      ]);
       sessions = activity.sessions;
       users = usersRes.users;
+      resetRequests = resets.requests;
     } catch (err) {
       errorMessage = err instanceof Error ? err.message : "Failed to load admin data";
     } finally {
@@ -156,6 +176,76 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Password reset requests -->
+    {#if resetRequests.length > 0}
+      <h2 class="mt-8 text-sm font-medium text-muted-foreground">
+        Password reset requests
+        {#if resetRequests.some((r) => r.status === "pending")}
+          <span class="ml-1.5 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+            {resetRequests.filter((r) => r.status === "pending").length} pending
+          </span>
+        {/if}
+      </h2>
+      <div class="mt-2 overflow-x-auto rounded-xl border border-border">
+        <table class="w-full min-w-[560px] text-sm">
+          <thead class="bg-card/80 text-left text-xs text-muted-foreground">
+            <tr>
+              <th class="px-3 py-2">User</th>
+              <th class="px-3 py-2">Requested</th>
+              <th class="px-3 py-2">Status</th>
+              <th class="px-3 py-2">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each resetRequests as req (req.id)}
+              <tr class="border-t border-border/60">
+                <td class="px-3 py-2">
+                  <span class="font-medium">{req.username}</span>
+                  <span class="block text-xs text-muted-foreground">{req.email}</span>
+                </td>
+                <td class="px-3 py-2 text-muted-foreground">{relTime(req.requested_at)}</td>
+                <td class="px-3 py-2">
+                  {#if req.status === "pending"}
+                    <span class="text-amber-400">Pending</span>
+                  {:else if req.status === "approved"}
+                    <span class="text-emerald-400">Approved</span>
+                  {:else}
+                    <span class="text-muted-foreground">Denied</span>
+                  {/if}
+                </td>
+                <td class="px-3 py-2">
+                  {#if req.status === "pending"}
+                    <div class="flex gap-1.5">
+                      <button
+                        type="button"
+                        onclick={() => void resolveReset(req.id, "approve")}
+                        class="rounded-md bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/25"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onclick={() => void resolveReset(req.id, "deny")}
+                        class="rounded-md bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-400 transition-colors hover:bg-red-500/25"
+                      >
+                        Deny
+                      </button>
+                    </div>
+                  {:else}
+                    <span class="text-xs text-muted-foreground">—</span>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-1.5 text-xs text-muted-foreground">
+        Verify it's really them before approving (ask in chat or elsewhere) — an approval lets the
+        requesting device change the password for 24 hours.
+      </p>
+    {/if}
 
     <!-- Registered users -->
     <h2 class="mt-8 text-sm font-medium text-muted-foreground">Registered users</h2>

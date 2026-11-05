@@ -23,6 +23,7 @@
   import { homeReset } from "$lib/stores/homeReset.svelte";
   import SignIn from "$lib/pages/SignIn.svelte";
   import SignUp from "$lib/pages/SignUp.svelte";
+  import ForgotPassword from "$lib/pages/ForgotPassword.svelte";
   import Admin from "$lib/pages/Admin.svelte";
   import AccountPrompt from "$lib/components/AccountPrompt.svelte";
   import GlobalChat from "$lib/components/GlobalChat.svelte";
@@ -167,6 +168,8 @@
       <SignIn />
     {:else if router.current.name === "signup"}
       <SignUp />
+    {:else if router.current.name === "forgot"}
+      <ForgotPassword />
     {:else if router.current.name === "admin"}
       <Admin />
     {:else}

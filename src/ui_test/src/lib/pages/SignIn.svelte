@@ -79,5 +79,8 @@
       New here?
       <a href="#/signup" class="text-primary hover:underline">Create an account</a>
     </p>
+    <p class="mt-1.5 text-center text-sm">
+      <a href="#/forgot" class="text-muted-foreground hover:text-primary hover:underline">Forgot password?</a>
+    </p>
   </div>
 </main>

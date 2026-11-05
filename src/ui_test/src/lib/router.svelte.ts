@@ -14,6 +14,7 @@ export type Route =
   | { name: "settings" }
   | { name: "signin" }
   | { name: "signup" }
+  | { name: "forgot" }
   | { name: "admin" }
   | { name: "notfound" };
 
@@ -42,6 +43,8 @@ function parseHash(hash: string): Route {
     route = { name: "signin" };
   } else if (path === "/signup") {
     route = { name: "signup" };
+  } else if (path === "/forgot") {
+    route = { name: "forgot" };
   } else if (path === "/admin") {
     route = { name: "admin" };
   }
