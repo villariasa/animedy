@@ -7,6 +7,8 @@ import {
   apiRegister,
   apiMe,
   apiCheckUsername,
+  apiUploadAvatar,
+  apiDeleteAvatar,
   setSession,
   clearSession,
   loadStoredUser,
@@ -77,6 +79,25 @@ class AuthStore {
 
   checkUsername(username: string): Promise<{ available: boolean }> {
     return apiCheckUsername(username);
+  }
+
+  async updateAvatar(file: File): Promise<string> {
+    const { avatar_url } = await apiUploadAvatar(file);
+    if (this.user) {
+      this.user = { ...this.user, avatar_url };
+      const token = localStorage.getItem("animedy.auth_token") ?? "";
+      setSession(token, this.user);
+    }
+    return avatar_url;
+  }
+
+  async removeAvatar(): Promise<void> {
+    await apiDeleteAvatar();
+    if (this.user) {
+      this.user = { ...this.user, avatar_url: null };
+      const token = localStorage.getItem("animedy.auth_token") ?? "";
+      setSession(token, this.user);
+    }
   }
 
   private async runSync(userId: number, freshAccount: boolean): Promise<void> {

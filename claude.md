@@ -33,7 +33,7 @@ The schema has been migrated to SQLite syntax and is stored in `src/animedy_v1/q
 - `watch_status`: `(user_id, anime_id, status, updated_at)` — Watching, Completed, Plan to Watch, Dropped
 
 ### Core Authentication & User
-- `users`: `(id, email, username, password_hash, role, created_at, updated_at)`
+- `users`: `(id, email, username, password_hash, role, avatar_url, created_at, updated_at)`
 - `user_settings`: `(user_id, volume, playback_speed, subtitle_lang, ...)`
 
 ### Anime & Episode Metadata
@@ -48,8 +48,33 @@ The schema has been migrated to SQLite syntax and is stored in `src/animedy_v1/q
 
 ### Presence & Live Chat (from `PLAN_GLOBAL_CHAT.md`)
 - `user_activity`: Presence & heartbeat session tracking for admin monitoring
-- `chat_messages`: `(id, user_id, username, body, deleted, created_at)` — Global chat messages with soft-delete
+- `chat_messages`: `(id, user_id, username, avatar_url, body, deleted, created_at)` — Global chat messages with avatar
 - `chat_mutes`: `(user_id, reason, muted_by, muted_until, created_at)` — User mute records for moderation
+
+---
+
+## 3. Cloudflare R2 Avatar Storage (`animedy-avatars`)
+
+User profile pictures are stored in Cloudflare R2 (S3-compatible, 0 egress fees, 10GB free).
+- **R2 Bucket Name**: `animedy-avatars`
+- **Pages Binding**: `env.AVATARS` (configured in `wrangler.toml`)
+- **Direct Image URL**: `GET /api/avatar/[userId]`
+- **Upload / Update**: `POST /api/user/avatar` (multipart/form-data with `file`)
+- **Delete / Reset**: `DELETE /api/user/avatar`
+
+### Using in Frontend:
+```typescript
+import { auth } from "$lib/stores/auth.svelte";
+
+// Current user avatar:
+auth.user?.avatar_url // string URL or null
+
+// Upload new avatar from <input type="file">:
+const avatarUrl = await auth.updateAvatar(file);
+
+// Remove avatar:
+await auth.removeAvatar();
+```
 
 ---
 

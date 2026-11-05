@@ -156,6 +156,7 @@ export function toProfile(user: UserRow): {
   email: string;
   username: string;
   role: string;
+  avatar_url: string | null;
   created_at: string;
 } {
   return {
@@ -163,6 +164,7 @@ export function toProfile(user: UserRow): {
     email: user.email,
     username: user.username,
     role: user.role,
+    avatar_url: user.avatar_url ?? null,
     created_at: user.created_at,
   };
 }

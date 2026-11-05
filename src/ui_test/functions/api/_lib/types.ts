@@ -19,8 +19,24 @@ export interface D1Database {
   batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
 }
 
+export interface R2ObjectBody {
+  body: ReadableStream;
+  httpMetadata?: { contentType?: string };
+}
+
+export interface R2Bucket {
+  put(
+    key: string,
+    value: ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob,
+    options?: { httpMetadata?: { contentType?: string } }
+  ): Promise<unknown>;
+  get(key: string): Promise<R2ObjectBody | null>;
+  delete(key: string): Promise<void>;
+}
+
 export interface Env {
   DB: D1Database;
+  AVATARS?: R2Bucket;
   JWT_SECRET: string;
   /** Optional — when set, register/login require a valid Turnstile token. */
   TURNSTILE_SECRET?: string;
@@ -43,6 +59,7 @@ export interface UserRow {
   username: string;
   password_hash: string;
   role: "user" | "admin";
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 }

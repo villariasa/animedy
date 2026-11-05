@@ -11,3 +11,7 @@ compatibility_date = "2026-01-01"
 binding = "DB"
 database_name = "animedy-db"
 database_id = "e00b316c-2119-4b2e-85fc-65b431e8b40f"
+
+[[r2_buckets]]
+binding = "AVATARS"
+bucket_name = "animedy-avatars"

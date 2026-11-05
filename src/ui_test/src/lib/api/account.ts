@@ -18,6 +18,7 @@ export interface AuthUser {
   email: string;
   username: string;
   role: "user" | "admin";
+  avatar_url?: string | null;
   created_at: string;
 }
 
@@ -298,6 +299,75 @@ export function apiAdminActivity(): Promise<{ sessions: AdminSession[]; now: str
   return request("/api/admin/activity");
 }
 
+// ---------- global chat ----------
+
+export interface ChatMessage {
+  id: number;
+  user_id: number;
+  username: string;
+  avatar_url?: string | null;
+  body: string;
+  created_at: string;
+}
+
+export function apiChatFetch(since?: number): Promise<{ messages: ChatMessage[]; latest_id: number }> {
+  const query = since !== undefined ? `?since=${since}` : "";
+  return request(`/api/chat${query}`, { auth: false });
+}
+
+export function apiChatSend(body: string): Promise<{ message: ChatMessage }> {
+  return request("/api/chat", { method: "POST", body: { body } });
+}
+
+export function apiChatDelete(messageId: number): Promise<unknown> {
+  return request(`/api/admin/chat/${messageId}`, { method: "DELETE" });
+}
+
+export function apiChatMute(userId: number, hours?: number, reason?: string): Promise<unknown> {
+  return request(`/api/admin/chat/mute/${userId}`, { method: "PUT", body: { hours, reason } });
+}
+
+export function apiChatUnmute(userId: number): Promise<unknown> {
+  return request(`/api/admin/chat/mute/${userId}`, { method: "DELETE" });
+}
+
 export function apiAdminUsers(): Promise<{ users: AdminUser[] }> {
   return request("/api/admin/users");
+}
+
+// ---------- profile avatar ----------
+
+export async function apiUploadAvatar(file: File): Promise<{ avatar_url: string }> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch("/api/user/avatar", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+  } catch {
+    throw new ApiError("Network error while uploading avatar", 0);
+  }
+
+  let envelope: Envelope<{ avatar_url: string }>;
+  try {
+    envelope = (await res.json()) as Envelope<{ avatar_url: string }>;
+  } catch {
+    throw new ApiError(`Unexpected response (${res.status})`, res.status);
+  }
+  if (!res.ok || !envelope.success) {
+    throw new ApiError(envelope.message || "Failed to upload avatar", res.status);
+  }
+  return envelope.data;
+}
+
+export function apiDeleteAvatar(): Promise<{ avatar_url: null }> {
+  return request("/api/user/avatar", { method: "DELETE" });
 }
