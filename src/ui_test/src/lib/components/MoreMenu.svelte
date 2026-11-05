@@ -1,5 +1,6 @@
 <script lang="ts">
   import { router } from "$lib/router.svelte";
+  import { auth } from "$lib/stores/auth.svelte";
 
   let open = $state(false);
   let container: HTMLDivElement | undefined;
@@ -85,6 +86,75 @@
           {item.label}
         </a>
       {/each}
+
+      <!-- Account section -->
+      <div class="border-t border-border/70">
+        {#if auth.isLoggedIn}
+          <div class="px-3.5 py-2 text-xs text-muted-foreground">
+            Signed in as <span class="font-medium text-foreground">{auth.user?.username}</span>
+          </div>
+          {#if auth.isAdmin}
+            <a
+              href="#/admin"
+              role="menuitem"
+              onclick={(e) => {
+                e.preventDefault();
+                go("#/admin");
+              }}
+              class="flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium transition-colors hover:bg-accent {router.current.name === 'admin' ? 'text-primary bg-primary/5' : ''}"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 shrink-0 text-muted-foreground">
+                <path fill-rule="evenodd" d="M9.661 2.237a.531.531 0 0 1 .678 0 11.947 11.947 0 0 0 7.078 2.749.5.5 0 0 1 .479.425c.069.52.104 1.05.104 1.59 0 5.162-3.26 9.563-7.834 11.256a.48.48 0 0 1-.332 0C5.26 16.564 2 12.163 2 7c0-.538.035-1.069.104-1.589a.5.5 0 0 1 .48-.425 11.947 11.947 0 0 0 7.077-2.75Z" clip-rule="evenodd" />
+              </svg>
+              Admin
+            </a>
+          {/if}
+          <button
+            type="button"
+            role="menuitem"
+            onclick={() => {
+              open = false;
+              auth.logout();
+            }}
+            class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 shrink-0">
+              <path fill-rule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25Z" clip-rule="evenodd" />
+              <path fill-rule="evenodd" d="M19 10a.75.75 0 0 0-.75-.75H8.704l1.048-.943a.75.75 0 1 0-1.004-1.114l-2.5 2.25a.75.75 0 0 0 0 1.114l2.5 2.25a.75.75 0 1 0 1.004-1.114l-1.048-.943h9.546A.75.75 0 0 0 19 10Z" clip-rule="evenodd" />
+            </svg>
+            Sign out
+          </button>
+        {:else}
+          <a
+            href="#/signin"
+            role="menuitem"
+            onclick={(e) => {
+              e.preventDefault();
+              go("#/signin");
+            }}
+            class="flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium transition-colors hover:bg-accent {router.current.name === 'signin' ? 'text-primary bg-primary/5' : ''}"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 shrink-0 text-muted-foreground">
+              <path fill-rule="evenodd" d="M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-7 9a7 7 0 1 1 14 0H3Z" clip-rule="evenodd" />
+            </svg>
+            Sign in
+          </a>
+          <a
+            href="#/signup"
+            role="menuitem"
+            onclick={(e) => {
+              e.preventDefault();
+              go("#/signup");
+            }}
+            class="flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-accent {router.current.name === 'signup' ? 'bg-primary/5' : ''}"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 shrink-0">
+              <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.957 9.957 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003ZM16 8.75a.75.75 0 0 1 .75-.75h.75V7.25a.75.75 0 0 1 1.5 0V8h.75a.75.75 0 0 1 0 1.5H19v.75a.75.75 0 0 1-1.5 0v-.75h-.75a.75.75 0 0 1-.75-.75Z" />
+            </svg>
+            Sign up
+          </a>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>

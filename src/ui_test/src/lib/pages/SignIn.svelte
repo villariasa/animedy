@@ -1,0 +1,83 @@
+<script lang="ts">
+  import { auth } from "$lib/stores/auth.svelte";
+  import { router } from "$lib/router.svelte";
+  import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
+
+  let identifier = $state("");
+  let password = $state("");
+  let turnstileToken = $state("");
+  let submitting = $state(false);
+  let errorMessage = $state("");
+  let turnstileWidget: TurnstileWidget | undefined;
+
+  async function submit(e: SubmitEvent): Promise<void> {
+    e.preventDefault();
+    if (submitting || !identifier || !password) return;
+    submitting = true;
+    errorMessage = "";
+    try {
+      await auth.login({ email: identifier, password, turnstile_token: turnstileToken });
+      router.go("/");
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : "Sign in failed";
+      turnstileWidget?.reset();
+    } finally {
+      submitting = false;
+    }
+  }
+</script>
+
+<main class="mx-auto w-full max-w-md px-4 py-10">
+  <div class="rounded-2xl border border-border/80 bg-card/80 p-6 shadow-lg backdrop-blur">
+    <h1 class="text-xl font-semibold">Welcome back</h1>
+    <p class="mt-1 text-sm text-muted-foreground">
+      Sign in to sync your Liked, My List and progress across devices.
+    </p>
+
+    <form class="mt-6 flex flex-col gap-4" onsubmit={submit}>
+      <label class="flex flex-col gap-1.5 text-sm">
+        <span class="text-muted-foreground">Email or username</span>
+        <input
+          type="text"
+          bind:value={identifier}
+          required
+          autocomplete="username"
+          class="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-primary"
+          placeholder="you@example.com"
+        />
+      </label>
+
+      <label class="flex flex-col gap-1.5 text-sm">
+        <span class="text-muted-foreground">Password</span>
+        <input
+          type="password"
+          bind:value={password}
+          required
+          autocomplete="current-password"
+          class="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-primary"
+        />
+      </label>
+
+      <TurnstileWidget bind:this={turnstileWidget} bind:token={turnstileToken} />
+
+      {#if errorMessage}
+        <p class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          {errorMessage}
+        </p>
+      {/if}
+
+      <button
+        type="submit"
+        disabled={submitting}
+        class="rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-all hover:opacity-90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {submitting ? (auth.syncing ? "Syncing your data…" : "Signing in…") : "Sign in"}
+      </button>
+    </form>
+
+    <p class="mt-4 text-center text-sm text-muted-foreground">
+      New here?
+      <a href="#/signup" class="text-primary hover:underline">Create an account</a>
+    </p>
+  </div>
+</main>

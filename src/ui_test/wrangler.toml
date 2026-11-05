@@ -1,0 +1,13 @@
+# Cloudflare Pages config — binds the D1 database (animedy-db) to env.DB for
+# the functions/ directory, both in `wrangler pages dev` and on deploy.
+# Secrets (JWT_SECRET, TURNSTILE_SECRET) are NOT set here: locally they come
+# from .dev.vars (gitignored); in production set them in the Pages dashboard
+# under Settings → Environment variables.
+name = "animedy"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "animedy-db"
+database_id = "e00b316c-2119-4b2e-85fc-65b431e8b40f"

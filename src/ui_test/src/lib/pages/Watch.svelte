@@ -19,6 +19,7 @@
   import { settings } from "$lib/stores/settings.svelte";
   import Player from "$lib/components/player/Player.svelte";
   import { resolveServer3Stream, Server3Error } from "$lib/api/server3";
+  import { presence } from "$lib/sync/presence.svelte";
 
   // episodeId in the route is the episode NUMBER — streams come from embed
   // providers keyed by (anilist id, episode number). No backend, no accounts.
@@ -38,6 +39,17 @@
   let watchedEpisodeNumbers = $state<Set<number>>(new Set());
 
   const DRAWER_CHUNK_SIZE = 50;
+
+  // Presence heartbeat: report what this device is watching (admin dashboard).
+  $effect(() => {
+    presence.setWatching({
+      anime_id: animeId,
+      episode_number: episodeId,
+      title: anime ? displayTitle(anime.title_english, anime.title_romaji) : null,
+      cover_image: anime?.cover_image ?? null
+    });
+    return () => presence.setWatching(null);
+  });
   let drawerChunkIndex = $state(0);
   let drawerQuery = $state("");
 
@@ -641,6 +653,7 @@
     dur: number,
     completed: boolean,
   ): Promise<void> {
+    presence.updatePosition(pos);
     await saveLocalProgress({
       episode_id: progressKey(animeId, episodeId),
       anime_id: animeId,

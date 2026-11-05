@@ -1,3 +1,5 @@
+import { hasToken, apiPutLike, apiDeleteLike } from "$lib/api/account";
+
 export interface LikedAnime {
   anime_id: number;
   title_english: string | null;
@@ -45,6 +47,36 @@ class LikesStore {
     }
   }
 
+  /** Write-through to the account API when signed in; local-only for guests.
+   * Fire-and-forget — the local copy is already updated optimistically. */
+  private syncRemote(entry: LikedAnime, liked: boolean): void {
+    if (!hasToken()) return;
+    const call = liked
+      ? apiPutLike(entry.anime_id, {
+          title_english: entry.title_english,
+          title_romaji: entry.title_romaji,
+          cover_image: entry.cover_image,
+          format: entry.format ?? null,
+          season_year: entry.season_year ?? null,
+          liked_at: entry.liked_at
+        })
+      : apiDeleteLike(entry.anime_id);
+    void call.catch(() => undefined);
+  }
+
+  /** Replace local state with the cloud copy (after login/migration). */
+  replaceAll(items: LikedAnime[]): void {
+    this.items = items;
+    this.persist();
+  }
+
+  /** Wipe local state (sign-out) so the next guest session starts clean. */
+  clearAll(): void {
+    this.items = [];
+    this.lastAction = null;
+    this.persist();
+  }
+
   isLiked(animeId: number): boolean {
     return this.items.some((item) => item.anime_id === animeId);
   }
@@ -61,6 +93,7 @@ class LikesStore {
     if (existing) {
       this.items = this.items.filter((item) => item.anime_id !== anime.anime_id);
       this.persist();
+      this.syncRemote(existing, false);
       this.lastAction = { type: "unliked", item: existing, at: Date.now() };
       return false;
     } else {
@@ -75,6 +108,7 @@ class LikesStore {
       };
       this.items = [entry, ...this.items];
       this.persist();
+      this.syncRemote(entry, true);
       this.lastAction = { type: "liked", item: entry, at: Date.now() };
       return true;
     }
@@ -90,11 +124,13 @@ class LikesStore {
         if (!this.isLiked(action.item.anime_id)) {
           this.items = [action.item, ...this.items];
           this.persist();
+          this.syncRemote(action.item, true);
         }
         this.lastAction = { type: "liked", item: action.item, at: Date.now() };
       } else {
         this.items = this.items.filter((item) => item.anime_id !== action.item.anime_id);
         this.persist();
+        this.syncRemote(action.item, false);
         this.lastAction = { type: "unliked", item: action.item, at: Date.now() };
       }
     }

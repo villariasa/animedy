@@ -21,9 +21,21 @@
   import MoreMenu from "$lib/components/MoreMenu.svelte";
   import { router } from "$lib/router.svelte";
   import { homeReset } from "$lib/stores/homeReset.svelte";
+  import SignIn from "$lib/pages/SignIn.svelte";
+  import SignUp from "$lib/pages/SignUp.svelte";
+  import Admin from "$lib/pages/Admin.svelte";
+  import AccountPrompt from "$lib/components/AccountPrompt.svelte";
+  import { auth } from "$lib/stores/auth.svelte";
+  import { presence } from "$lib/sync/presence.svelte";
 
   let isSearchActive = $state(false);
   let isMobileMenuOpen = $state(false);
+
+  // Presence heartbeat (guests included) + token revalidation on startup.
+  $effect(() => {
+    presence.start();
+    void auth.refresh();
+  });
 
   function goHome(): void {
     router.go("/");
@@ -150,12 +162,19 @@
       <Stats />
     {:else if router.current.name === "settings"}
       <Settings />
+    {:else if router.current.name === "signin"}
+      <SignIn />
+    {:else if router.current.name === "signup"}
+      <SignUp />
+    {:else if router.current.name === "admin"}
+      <Admin />
     {:else}
       <Placeholder title="Not found" task="a future task" />
     {/if}
   </main>
 
   <UndoSnackbar />
+  <AccountPrompt />
   <NotificationPrompt />
   <NewEpisodeNotifier />
   <DiscoveryNotifier />

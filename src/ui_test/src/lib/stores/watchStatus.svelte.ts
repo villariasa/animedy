@@ -1,3 +1,5 @@
+import { hasToken, apiPutWatchStatus, apiDeleteWatchStatus } from "$lib/api/account";
+
 export type WatchStatus = "watching" | "completed" | "plan_to_watch" | "dropped";
 
 export const WATCH_STATUS_LABELS: Record<WatchStatus, string> = {
@@ -88,6 +90,7 @@ class WatchStatusStore {
     };
     this.items = [entry, ...rest];
     this.persist();
+    this.syncRemote(entry);
     this.lastAction = { previous, current: entry, at: Date.now() };
   }
 
@@ -96,8 +99,37 @@ class WatchStatusStore {
     this.items = this.items.filter((item) => item.anime_id !== animeId);
     this.persist();
     if (previous) {
+      this.syncRemote(null, animeId);
       this.lastAction = { previous, current: null, at: Date.now() };
     }
+  }
+
+  /** Write-through to the account API when signed in (fire-and-forget). */
+  private syncRemote(entry: WatchStatusEntry | null, removedAnimeId?: number): void {
+    if (!hasToken()) return;
+    const call = entry
+      ? apiPutWatchStatus(entry.anime_id, entry.status, {
+          title_english: entry.title_english,
+          title_romaji: entry.title_romaji,
+          cover_image: entry.cover_image,
+          format: entry.format ?? null,
+          season_year: entry.season_year ?? null
+        })
+      : apiDeleteWatchStatus(removedAnimeId ?? 0);
+    void call.catch(() => undefined);
+  }
+
+  /** Replace local state with the cloud copy (after login/migration). */
+  replaceAll(items: WatchStatusEntry[]): void {
+    this.items = items;
+    this.persist();
+  }
+
+  /** Wipe local state (sign-out). */
+  clearAll(): void {
+    this.items = [];
+    this.lastAction = null;
+    this.persist();
   }
 
   /** Reverse the last set/clear. */
@@ -113,6 +145,11 @@ class WatchStatusStore {
       this.items = rest;
     }
     this.persist();
+    if (action.previous) {
+      this.syncRemote(action.previous);
+    } else {
+      this.syncRemote(null, animeId);
+    }
     this.lastAction = { previous: action.current, current: action.previous, at: Date.now() };
   }
 

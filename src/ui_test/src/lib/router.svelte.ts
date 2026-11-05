@@ -12,6 +12,9 @@ export type Route =
   | { name: "mylist" }
   | { name: "stats" }
   | { name: "settings" }
+  | { name: "signin" }
+  | { name: "signup" }
+  | { name: "admin" }
   | { name: "notfound" };
 
 function parseHash(hash: string): Route {
@@ -35,6 +38,12 @@ function parseHash(hash: string): Route {
     route = { name: "stats" };
   } else if (path === "/settings") {
     route = { name: "settings" };
+  } else if (path === "/signin") {
+    route = { name: "signin" };
+  } else if (path === "/signup") {
+    route = { name: "signup" };
+  } else if (path === "/admin") {
+    route = { name: "admin" };
   }
   return route;
 }

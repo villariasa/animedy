@@ -3,7 +3,19 @@
 // watchStatus.svelte.ts. An anime can belong to any number of custom lists
 // at once (unlike watch status, which is exclusive), so membership is a
 // flat array of {list_id, anime_id} rows rather than one field per anime.
-// Local-only (localStorage), same as every other store here — no accounts.
+// Guest mode uses localStorage only; when signed in, writes also go through
+// the account API. Cloud list ids are numeric — the local string `id` holds
+// the stringified server id once synced ("42"); guest-created lists keep a
+// random temp id until migration remaps them.
+
+import {
+  hasToken,
+  apiCreateList,
+  apiRenameList,
+  apiDeleteList,
+  apiAddListEntry,
+  apiRemoveListEntry
+} from "$lib/api/account";
 
 export interface CustomList {
   id: string;
@@ -68,6 +80,19 @@ class CustomListsStore {
     }
   }
 
+  /** Cloud list ids are numeric strings; guest temp ids are not. */
+  private static isCloudId(listId: string): boolean {
+    return /^\d+$/.test(listId);
+  }
+
+  /** Swap a temp id for the server-assigned one across lists and entries. */
+  private remapId(fromId: string, toId: string): void {
+    this.lists = this.lists.map((l) => (l.id === fromId ? { ...l, id: toId } : l));
+    this.entries = this.entries.map((e) => (e.list_id === fromId ? { ...e, list_id: toId } : e));
+    this.persistLists();
+    this.persistEntries();
+  }
+
   /** Creates a new list and returns its id. Blank/whitespace-only names are rejected. */
   create(name: string): CustomList | null {
     const trimmed = name.trim();
@@ -75,6 +100,11 @@ class CustomListsStore {
     const list: CustomList = { id: makeId(), name: trimmed, created_at: new Date().toISOString() };
     this.lists = [...this.lists, list];
     this.persistLists();
+    if (hasToken()) {
+      void apiCreateList(trimmed)
+        .then((created) => this.remapId(list.id, String(created.id)))
+        .catch(() => undefined);
+    }
     return list;
   }
 
@@ -83,11 +113,33 @@ class CustomListsStore {
     if (!trimmed) return;
     this.lists = this.lists.map((l) => (l.id === listId ? { ...l, name: trimmed } : l));
     this.persistLists();
+    if (hasToken() && CustomListsStore.isCloudId(listId)) {
+      void apiRenameList(Number(listId), trimmed).catch(() => undefined);
+    }
   }
 
   remove(listId: string): void {
     this.lists = this.lists.filter((l) => l.id !== listId);
     this.entries = this.entries.filter((e) => e.list_id !== listId);
+    this.persistLists();
+    this.persistEntries();
+    if (hasToken() && CustomListsStore.isCloudId(listId)) {
+      void apiDeleteList(Number(listId)).catch(() => undefined);
+    }
+  }
+
+  /** Replace local state with the cloud copy (after login/migration). */
+  replaceAll(lists: CustomList[], entries: CustomListEntry[]): void {
+    this.lists = lists;
+    this.entries = entries;
+    this.persistLists();
+    this.persistEntries();
+  }
+
+  /** Wipe local state (sign-out). */
+  clearAll(): void {
+    this.lists = [];
+    this.entries = [];
     this.persistLists();
     this.persistEntries();
   }
@@ -126,11 +178,24 @@ class CustomListsStore {
     };
     this.entries = [entry, ...this.entries];
     this.persistEntries();
+    if (hasToken() && CustomListsStore.isCloudId(listId)) {
+      void apiAddListEntry(Number(listId), entry.anime_id, {
+        title_english: entry.title_english,
+        title_romaji: entry.title_romaji,
+        cover_image: entry.cover_image,
+        format: entry.format ?? null,
+        season_year: entry.season_year ?? null,
+        added_at: entry.added_at
+      }).catch(() => undefined);
+    }
   }
 
   removeAnime(listId: string, animeId: number): void {
     this.entries = this.entries.filter((e) => !(e.list_id === listId && e.anime_id === animeId));
     this.persistEntries();
+    if (hasToken() && CustomListsStore.isCloudId(listId)) {
+      void apiRemoveListEntry(Number(listId), animeId).catch(() => undefined);
+    }
   }
 
   toggleAnime(
