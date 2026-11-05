@@ -349,12 +349,25 @@ export function apiForgotRequest(identifier: string, turnstileToken?: string): P
   });
 }
 
-export function apiForgotStatus(identifier: string): Promise<{ status: "none" | "pending" | "approved" | "denied" | "expired" }> {
-  const secret = getResetSecret(identifier);
-  return request(
-    `/api/auth/forgot?identifier=${encodeURIComponent(identifier)}&client_secret=${encodeURIComponent(secret)}`,
-    { auth: false }
-  );
+export async function apiForgotStatus(
+  identifier: string
+): Promise<{ status: "none" | "pending" | "approved" | "denied" | "expired" }> {
+  // Secret goes in a header, not the URL (keeps it out of logs/history).
+  let res: Response;
+  try {
+    res = await fetch(`/api/auth/forgot?identifier=${encodeURIComponent(identifier)}`, {
+      headers: { "X-Reset-Secret": getResetSecret(identifier) },
+    });
+  } catch {
+    throw new ApiError("Network error", 0);
+  }
+  const envelope = (await res.json().catch(() => null)) as Envelope<{
+    status: "none" | "pending" | "approved" | "denied" | "expired";
+  }> | null;
+  if (!envelope || !res.ok || !envelope.success) {
+    throw new ApiError(envelope?.message || `Request failed (${res.status})`, res.status);
+  }
+  return envelope.data;
 }
 
 export function apiForgotReset(identifier: string, newPassword: string): Promise<{ username: string }> {

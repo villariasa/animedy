@@ -12,9 +12,42 @@
     type PasswordResetRequest
   } from "$lib/api/account";
 
+  import { pushSupported, currentPushSubscription, enableAdminPush, disableAdminPush } from "$lib/push";
+
   let sessions = $state<AdminSession[]>([]);
   let users = $state<AdminUser[]>([]);
   let resetRequests = $state<PasswordResetRequest[]>([]);
+
+  // Push alerts (works even when the PWA is closed)
+  let pushEnabled = $state(false);
+  let pushBusy = $state(false);
+  let pushNote = $state("");
+
+  $effect(() => {
+    if (!auth.isAdmin) return;
+    void currentPushSubscription().then((sub) => (pushEnabled = sub !== null));
+  });
+
+  async function togglePush(): Promise<void> {
+    pushBusy = true;
+    pushNote = "";
+    try {
+      if (pushEnabled) {
+        await disableAdminPush();
+        pushEnabled = false;
+      } else {
+        const problem = await enableAdminPush();
+        if (problem) {
+          pushNote = problem;
+        } else {
+          pushEnabled = true;
+          pushNote = "This device now gets alerts even when the app is closed.";
+        }
+      }
+    } finally {
+      pushBusy = false;
+    }
+  }
 
   async function resolveReset(id: number, action: "approve" | "deny"): Promise<void> {
     try {
@@ -87,14 +120,30 @@
   {:else}
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">Admin — live activity</h1>
-      <button
-        type="button"
-        onclick={() => void refresh()}
-        class="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent"
-      >
-        Refresh
-      </button>
+      <div class="flex items-center gap-2">
+        {#if pushSupported()}
+          <button
+            type="button"
+            disabled={pushBusy}
+            onclick={() => void togglePush()}
+            class="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 {pushEnabled ? 'border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10' : 'border-border text-muted-foreground hover:bg-accent'}"
+            title="Push alerts for reset requests — works even when the app is closed"
+          >
+            {pushBusy ? "…" : pushEnabled ? "🔔 Alerts on" : "🔕 Enable alerts"}
+          </button>
+        {/if}
+        <button
+          type="button"
+          onclick={() => void refresh()}
+          class="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent"
+        >
+          Refresh
+        </button>
+      </div>
     </div>
+    {#if pushNote}
+      <p class="mt-2 text-xs text-muted-foreground">{pushNote}</p>
+    {/if}
 
     {#if errorMessage}
       <p class="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">

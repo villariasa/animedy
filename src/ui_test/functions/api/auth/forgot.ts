@@ -2,6 +2,7 @@ import type { PagesFunction, UserRow } from "../_lib/types";
 import { ok, fail, readJson } from "../_lib/http";
 import { sha256Hex } from "../_lib/auth";
 import { verifyTurnstile } from "../_lib/turnstile";
+import { notifyAdmins } from "../_lib/push";
 
 /**
  * Admin-approved password reset — request + status check.
@@ -47,6 +48,9 @@ export const onRequestPost: PagesFunction = async (context) => {
     )
       .bind(user.id, secretHash)
       .run();
+
+    // Wake the admin's devices (PWA push works even with the app closed).
+    context.waitUntil(notifyAdmins(env, env.DB));
   }
 
   return ok(
@@ -56,11 +60,13 @@ export const onRequestPost: PagesFunction = async (context) => {
   );
 };
 
-// GET /api/auth/forgot?identifier=X&client_secret=Y — status for the requesting device.
+// GET /api/auth/forgot?identifier=X — status for the requesting device.
+// The device secret travels in the X-Reset-Secret header, NOT the URL, so it
+// never lands in access logs or browser history.
 export const onRequestGet: PagesFunction = async (context) => {
   const url = new URL(context.request.url);
   const identifier = url.searchParams.get("identifier")?.trim() ?? "";
-  const clientSecret = url.searchParams.get("client_secret") ?? "";
+  const clientSecret = context.request.headers.get("X-Reset-Secret") ?? "";
   if (!identifier || !clientSecret) return fail("Missing parameters", 422);
 
   const secretHash = await sha256Hex(clientSecret);

@@ -64,3 +64,35 @@ self.addEventListener("fetch", (event) => {
     }
   }
 });
+
+/* --- Web Push: admin alerts (password reset requests etc.) ---
+ * Pushes arrive payload-less (the server only sends a VAPID-authenticated
+ * wake-up), so the notification text is generic. Clicking opens the admin
+ * dashboard, focusing an existing window when there is one. */
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    self.registration.showNotification("Animedy Admin", {
+      body: "New password reset request — open the admin dashboard to review it.",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: "animedy-admin-alert",
+      data: { url: "/#/admin" }
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || "/#/admin";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});
