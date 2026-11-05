@@ -22,6 +22,7 @@
   } from "$lib/api/account";
 
   import { pushSupported, currentPushSubscription, enablePush, disablePush } from "$lib/push";
+  import { notificationHistory } from "$lib/stores/notificationHistory.svelte";
 
   let sessions = $state<AdminSession[]>([]);
   let users = $state<AdminUser[]>([]);
@@ -48,7 +49,16 @@
     pushTestBusy = true;
     try {
       await apiPushTest(target);
-      pushNote = `Test push fired to ${target} — a notification should pop on subscribed devices within seconds.`;
+      notificationHistory.add({
+        id: `test:${Date.now()}`,
+        type: "system",
+        title: "Push Test Alert",
+        message: `Test alert sent to ${target}. Notifications are active!`,
+        cover: null,
+        created_at: new Date().toISOString(),
+        url: "#/admin",
+      });
+      pushNote = `Test push fired to ${target} — added to notification bell and dispatched to devices.`;
     } catch (err) {
       pushNote = err instanceof Error ? err.message : "Test failed";
     } finally {
@@ -120,7 +130,8 @@
     annNote = "";
     try {
       await apiAnnounce(annTitle.trim(), annBody.trim());
-      annNote = "Announcement pushed to every subscribed device.";
+      void notificationHistory.syncAnnouncements();
+      annNote = "Announcement posted and added to the notification bell!";
       annTitle = "";
       annBody = "";
     } catch (err) {
