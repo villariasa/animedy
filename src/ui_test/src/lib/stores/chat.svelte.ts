@@ -2,7 +2,15 @@
 // is open and the tab is visible (the endpoint is edge-cached 3s, so polling
 // clients mostly hit the CDN, not the function). Sends are optimistic.
 
-import { apiChatFetch, apiChatSend, apiChatDelete, type ChatMessage } from "$lib/api/account";
+import {
+  apiChatFetch,
+  apiChatSend,
+  apiChatDelete,
+  apiChatTyping,
+  hasToken,
+  loadStoredUser,
+  type ChatMessage
+} from "$lib/api/account";
 import { ApiError } from "$lib/api/client";
 
 const POLL_OPEN_MS = 4_000;
@@ -28,10 +36,22 @@ class ChatStore {
   error = $state("");
   /** Messages newer than the last one seen on this device. */
   unread = $state(0);
+  /** Usernames currently typing (excluding yourself). */
+  typingUsers = $state<string[]>([]);
 
   private latestId = 0;
   private lastReadId = loadLastRead();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private lastTypingPing = 0;
+
+  /** Called from the composer on input — throttled "I'm typing" ping. */
+  notifyTyping(): void {
+    if (!hasToken()) return;
+    const now = Date.now();
+    if (now - this.lastTypingPing < 2_500) return;
+    this.lastTypingPing = now;
+    void apiChatTyping().catch(() => undefined);
+  }
 
   /** Called once from GlobalChat on mount — starts the background poll so the
    * unread badge works before the panel is ever opened. */
@@ -80,6 +100,8 @@ class ChatStore {
         this.merge(data.messages);
       }
       this.latestId = Math.max(this.latestId, data.latest_id);
+      const me = loadStoredUser()?.username;
+      this.typingUsers = (data.typing ?? []).filter((name) => name !== me);
       if (this.open) {
         this.markRead();
       } else {

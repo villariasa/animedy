@@ -316,3 +316,19 @@ CREATE TABLE IF NOT EXISTS chat_typing (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
+
+-- ============================================================
+-- 20. feedback (PLAN_FEEDBACK.md — admin-only feedback inbox,
+--     guests welcome under a random device nickname)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  nickname TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback (created_at);

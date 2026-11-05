@@ -386,6 +386,54 @@ export function apiAdminResolveReset(id: number, action: "approve" | "deny"): Pr
   return request(`/api/admin/password-resets/${id}`, { method: "PUT", body: { action } });
 }
 
+// ---------- feedback ----------
+
+const GUEST_NICK_KEY = "animedy.guest_nick";
+const NICK_ADJECTIVES = ["Brave", "Sleepy", "Chill", "Spicy", "Cosmic", "Shiny", "Sneaky", "Mellow", "Turbo", "Lucky"];
+const NICK_ANIMALS = ["Fox", "Cat", "Panda", "Wolf", "Otter", "Hawk", "Koi", "Tanuki", "Shiba", "Crow"];
+
+/** Sticky random nickname for guests (e.g. "Guest-BraveFox42"). */
+export function getGuestNickname(): string {
+  try {
+    const saved = localStorage.getItem(GUEST_NICK_KEY);
+    if (saved) return saved;
+  } catch {
+    // storage disabled — fall through to a one-off nick
+  }
+  const nick = `Guest-${NICK_ADJECTIVES[Math.floor(Math.random() * NICK_ADJECTIVES.length)]}${
+    NICK_ANIMALS[Math.floor(Math.random() * NICK_ANIMALS.length)]
+  }${Math.floor(Math.random() * 90) + 10}`;
+  try {
+    localStorage.setItem(GUEST_NICK_KEY, nick);
+  } catch {
+    // storage disabled
+  }
+  return nick;
+}
+
+export interface FeedbackEntry {
+  id: number;
+  user_id: number | null;
+  nickname: string;
+  body: string;
+  created_at: string;
+}
+
+export function apiSendFeedback(body: string): Promise<{ sent: boolean }> {
+  return request("/api/feedback", {
+    method: "POST",
+    body: { body, client_id: getClientId(), nickname: getGuestNickname() },
+  });
+}
+
+export function apiAdminFeedback(): Promise<{ feedback: FeedbackEntry[] }> {
+  return request("/api/admin/feedback");
+}
+
+export function apiAdminDeleteFeedback(id: number): Promise<unknown> {
+  return request(`/api/admin/feedback/${id}`, { method: "DELETE" });
+}
+
 // ---------- announcements ----------
 
 export function apiAnnounce(title: string, body: string): Promise<{ id: number; title: string }> {
@@ -403,9 +451,15 @@ export interface ChatMessage {
   created_at: string;
 }
 
-export function apiChatFetch(since?: number): Promise<{ messages: ChatMessage[]; latest_id: number }> {
+export function apiChatFetch(
+  since?: number
+): Promise<{ messages: ChatMessage[]; latest_id: number; typing?: string[] }> {
   const query = since !== undefined ? `?since=${since}` : "";
   return request(`/api/chat${query}`, { auth: false });
+}
+
+export function apiChatTyping(): Promise<unknown> {
+  return request("/api/chat/typing", { method: "POST", body: {} });
 }
 
 export function apiChatSend(body: string): Promise<{ message: ChatMessage }> {

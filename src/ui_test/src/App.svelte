@@ -27,6 +27,8 @@
   import Admin from "$lib/pages/Admin.svelte";
   import AccountPrompt from "$lib/components/AccountPrompt.svelte";
   import GlobalChat from "$lib/components/GlobalChat.svelte";
+  import FeedbackModal from "$lib/components/FeedbackModal.svelte";
+  import { feedbackModal } from "$lib/stores/feedbackModal.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { presence } from "$lib/sync/presence.svelte";
 
@@ -180,6 +182,7 @@
   <UndoSnackbar />
   <AccountPrompt />
   <GlobalChat />
+  <FeedbackModal bind:isOpen={feedbackModal.open} />
   <NotificationPrompt />
   <NewEpisodeNotifier />
   <DiscoveryNotifier />

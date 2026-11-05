@@ -142,6 +142,26 @@
         {/if}
       </div>
 
+      <!-- Typing indicator -->
+      {#if chat.typingUsers.length > 0}
+        <div class="flex items-center gap-2 px-4 pb-1.5 text-xs text-muted-foreground">
+          <span class="flex items-end gap-0.5" aria-hidden="true">
+            <span class="typing-dot h-1.5 w-1.5 rounded-full bg-primary"></span>
+            <span class="typing-dot h-1.5 w-1.5 rounded-full bg-primary" style="animation-delay: 0.15s"></span>
+            <span class="typing-dot h-1.5 w-1.5 rounded-full bg-primary" style="animation-delay: 0.3s"></span>
+          </span>
+          <span class="italic">
+            {#if chat.typingUsers.length === 1}
+              {chat.typingUsers[0]} is typing…
+            {:else if chat.typingUsers.length === 2}
+              {chat.typingUsers[0]} and {chat.typingUsers[1]} are typing…
+            {:else}
+              Several people are typing…
+            {/if}
+          </span>
+        </div>
+      {/if}
+
       <!-- Composer -->
       <div class="border-t border-border/70 p-3">
         {#if auth.isLoggedIn}
@@ -152,6 +172,7 @@
             <input
               type="text"
               bind:value={draft}
+              oninput={() => chat.notifyTyping()}
               maxlength="500"
               placeholder="Message…"
               class="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
@@ -177,3 +198,19 @@
     </div>
   {/if}
 {/if}
+
+<style>
+  .typing-dot {
+    animation: typing-bounce 1s infinite ease-in-out;
+  }
+  @keyframes typing-bounce {
+    0%, 60%, 100% {
+      transform: translateY(0);
+      opacity: 0.45;
+    }
+    30% {
+      transform: translateY(-3px);
+      opacity: 1;
+    }
+  }
+</style>

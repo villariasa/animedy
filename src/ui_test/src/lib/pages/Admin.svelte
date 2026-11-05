@@ -8,6 +8,9 @@
     apiAdminResetRequests,
     apiAdminResolveReset,
     apiAnnounce,
+    apiAdminFeedback,
+    apiAdminDeleteFeedback,
+    type FeedbackEntry,
     type AdminSession,
     type AdminUser,
     type PasswordResetRequest
@@ -18,6 +21,12 @@
   let sessions = $state<AdminSession[]>([]);
   let users = $state<AdminUser[]>([]);
   let resetRequests = $state<PasswordResetRequest[]>([]);
+  let feedbackItems = $state<FeedbackEntry[]>([]);
+
+  async function deleteFeedback(id: number): Promise<void> {
+    feedbackItems = feedbackItems.filter((f) => f.id !== id);
+    await apiAdminDeleteFeedback(id).catch(() => undefined);
+  }
 
   // Push alerts (works even when the PWA is closed)
   let pushEnabled = $state(false);
@@ -92,14 +101,16 @@
   async function refresh(): Promise<void> {
     errorMessage = "";
     try {
-      const [activity, usersRes, resets] = await Promise.all([
+      const [activity, usersRes, resets, fb] = await Promise.all([
         apiAdminActivity(),
         apiAdminUsers(),
-        apiAdminResetRequests()
+        apiAdminResetRequests(),
+        apiAdminFeedback()
       ]);
       sessions = activity.sessions;
       users = usersRes.users;
       resetRequests = resets.requests;
+      feedbackItems = fb.feedback;
     } catch (err) {
       errorMessage = err instanceof Error ? err.message : "Failed to load admin data";
     } finally {
@@ -357,6 +368,44 @@
         requesting device change the password for 24 hours.
       </p>
     {/if}
+
+    <!-- Feedback inbox -->
+    <h2 class="mt-8 text-sm font-medium text-muted-foreground">
+      Feedback
+      {#if feedbackItems.length > 0}
+        <span class="ml-1.5 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary">{feedbackItems.length}</span>
+      {/if}
+    </h2>
+    <div class="mt-2 rounded-xl border border-border">
+      {#if feedbackItems.length === 0}
+        <p class="px-4 py-6 text-center text-sm text-muted-foreground">No feedback yet</p>
+      {:else}
+        <ul class="divide-y divide-border/60">
+          {#each feedbackItems as fb (fb.id)}
+            <li class="group flex items-start gap-3 px-4 py-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium">{fb.nickname}</span>
+                  {#if fb.user_id === null}
+                    <span class="rounded bg-accent/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">Guest</span>
+                  {/if}
+                  <span class="text-[10px] text-muted-foreground">{relTime(fb.created_at)}</span>
+                </div>
+                <p class="mt-0.5 break-words text-sm text-foreground/90">{fb.body}</p>
+              </div>
+              <button
+                type="button"
+                onclick={() => void deleteFeedback(fb.id)}
+                class="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
+                title="Delete feedback"
+              >
+                ✕
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
 
     <!-- Registered users -->
     <h2 class="mt-8 text-sm font-medium text-muted-foreground">Registered users</h2>
