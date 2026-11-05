@@ -46,6 +46,11 @@ The schema has been migrated to SQLite syntax and is stored in `src/animedy_v1/q
 - `watch_progress`: Playback position and completion tracking
 - `watch_state`: Current franchise pointer for the Continue Watching rail
 
+### Presence & Live Chat (from `PLAN_GLOBAL_CHAT.md`)
+- `user_activity`: Presence & heartbeat session tracking for admin monitoring
+- `chat_messages`: `(id, user_id, username, body, deleted, created_at)` — Global chat messages with soft-delete
+- `chat_mutes`: `(user_id, reason, muted_by, muted_until, created_at)` — User mute records for moderation
+
 ---
 
 ## 3. How to Query the Database

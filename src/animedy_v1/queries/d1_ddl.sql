@@ -234,3 +234,30 @@ CREATE TABLE IF NOT EXISTS user_activity (
 
 CREATE INDEX IF NOT EXISTS idx_user_activity_updated ON user_activity (updated_at);
 CREATE INDEX IF NOT EXISTS idx_user_activity_user ON user_activity (user_id);
+
+-- ============================================================
+-- 14. chat_messages (PLAN_GLOBAL_CHAT.md — global live chat)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  username TEXT NOT NULL,
+  body TEXT NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages (created_at);
+
+-- ============================================================
+-- 15. chat_mutes (PLAN_GLOBAL_CHAT.md — chat moderation)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_mutes (
+  user_id INTEGER PRIMARY KEY,
+  reason TEXT,
+  muted_by INTEGER NOT NULL,
+  muted_until TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
