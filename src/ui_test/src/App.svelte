@@ -87,18 +87,33 @@
       </div>
     {/if}
 
-    <!-- Mobile-only Hamburger Menu Button (placed on the right) -->
+    <!-- Mobile-only menu button (right side): the signed-in user's avatar,
+         or the hamburger for guests. Opens the nav drawer either way. -->
     {#if !isSearchActive}
       <button
         type="button"
         onclick={() => (isMobileMenuOpen = true)}
-        class="flex h-8 w-8 sm:hidden items-center justify-center rounded-lg bg-card/80 border border-border/70 text-foreground shadow-sm transition-all hover:bg-accent active:scale-95 shrink-0"
-        title="Open navigation menu"
+        class="flex h-8 w-8 sm:hidden items-center justify-center rounded-full {auth.isLoggedIn ? '' : 'rounded-lg bg-card/80 border border-border/70'} text-foreground shadow-sm transition-all hover:bg-accent active:scale-95 shrink-0"
+        title={auth.isLoggedIn ? auth.user?.username : "Open navigation menu"}
         aria-label="Open navigation menu"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-4 w-4">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-        </svg>
+        {#if auth.isLoggedIn}
+          {#if auth.user?.avatar_url}
+            <img
+              src={auth.user.avatar_url}
+              alt={auth.user.username}
+              class="h-8 w-8 rounded-full border border-border/70 object-cover"
+            />
+          {:else}
+            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold uppercase text-primary ring-1 ring-border/70">
+              {auth.user?.username.slice(0, 1)}
+            </span>
+          {/if}
+        {:else}
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="h-4 w-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+        {/if}
       </button>
     {/if}
 

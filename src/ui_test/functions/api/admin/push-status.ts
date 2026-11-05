@@ -37,11 +37,17 @@ export const onRequestPost: PagesFunction = async (context) => {
   const auth = await requireAdmin(context);
   if ("response" in auth) return auth.response;
 
-  const body = (await context.request.json().catch(() => ({}))) as { target?: string };
-  if (body.target === "everyone") {
-    await notifyEveryone(context.env, context.env.DB);
-  } else {
-    await notifyAdmins(context.env, context.env.DB);
+  try {
+    const body = (await context.request.json().catch(() => ({}))) as { target?: string };
+    if (body.target === "everyone") {
+      await notifyEveryone(context.env, context.env.DB);
+    } else {
+      await notifyAdmins(context.env, context.env.DB);
+    }
+    return ok({ fired: true }, "Test push fired — check your devices", 200);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to trigger push notification";
+    return fail(msg, 500);
   }
-  return ok({ fired: true }, "Test push fired — check your devices", 200);
 };
+

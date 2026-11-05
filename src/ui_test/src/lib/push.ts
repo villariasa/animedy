@@ -7,7 +7,7 @@ import { getToken } from "$lib/api/account";
 
 /** VAPID public key — pairs with the VAPID_PRIVATE_JWK Pages secret. */
 const VAPID_PUBLIC_KEY =
-  "BCa52K0RFyN6R0eks8E2s5X6HobrJF-IwPnv3yFOhKGsxkoASG0WSmVfLtwQBXWhvelHCo3K05mCmj1r9DTI67g";
+  "BLD3Py_hp6_wdAd0ZW7wQy8l5dPYg7TZoDqez7tLlB133CEQ0unA1F2g6DxgbWFhnqlrc8t3zEKMaYxJAyluXTo";
 
 function urlB64ToUint8Array(base64: string): Uint8Array {
   const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
@@ -44,15 +44,20 @@ export async function enablePush(): Promise<string | null> {
   if (permission !== "granted") return "Notification permission was denied";
 
   let sub = await reg.pushManager.getSubscription();
-  if (!sub) {
+  if (sub) {
     try {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
-      });
-    } catch {
-      return "Push subscription failed — check browser settings";
-    }
+      await sub.unsubscribe();
+    } catch {}
+    sub = null;
+  }
+
+  try {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+    });
+  } catch {
+    return "Push subscription failed — check browser settings";
   }
 
   const res = await fetch("/api/push/subscribe", {

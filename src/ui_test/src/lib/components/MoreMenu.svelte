@@ -56,14 +56,29 @@
     type="button"
     onclick={toggleOpen}
     class="flex h-9 w-9 items-center justify-center rounded-xl transition-all hover:bg-accent active:scale-95 {open || isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-primary'}"
-    title="More"
-    aria-label="More options"
+    title={auth.isLoggedIn ? auth.user?.username : "More"}
+    aria-label={auth.isLoggedIn ? "Account menu" : "More options"}
     aria-haspopup="menu"
     aria-expanded={open}
   >
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5">
-      <path d="M10 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM10 8.5A1.5 1.5 0 1 1 10 11.5a1.5 1.5 0 0 1 0-3ZM10 14a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" />
-    </svg>
+    {#if auth.isLoggedIn}
+      <!-- Signed in: the trigger IS your profile picture -->
+      {#if auth.user?.avatar_url}
+        <img
+          src={auth.user.avatar_url}
+          alt={auth.user.username}
+          class="h-7 w-7 rounded-full border object-cover {open || isActive ? 'border-primary' : 'border-border/70'}"
+        />
+      {:else}
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-xs font-bold uppercase text-primary ring-1 {open || isActive ? 'ring-primary' : 'ring-border/70'}">
+          {auth.user?.username.slice(0, 1)}
+        </span>
+      {/if}
+    {:else}
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5">
+        <path d="M10 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM10 8.5A1.5 1.5 0 1 1 10 11.5a1.5 1.5 0 0 1 0-3ZM10 14a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" />
+      </svg>
+    {/if}
   </button>
 
   {#if open}

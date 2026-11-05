@@ -14,8 +14,9 @@ function toB64url(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function vapidJwt(privateJwk: string, audience: string): Promise<string> {
-  const jwk = JSON.parse(privateJwk) as JsonWebKey;
+async function vapidJwt(privateJwk: string | JsonWebKey, audience: string): Promise<string> {
+  const cleanStr = typeof privateJwk === "string" ? privateJwk.trim().replace(/^['"]|['"]$/g, "") : "";
+  const jwk = typeof privateJwk === "object" ? privateJwk : (JSON.parse(cleanStr) as JsonWebKey);
   const key = await crypto.subtle.importKey(
     "jwk",
     jwk,
@@ -54,9 +55,9 @@ interface SubscriptionRow {
  * service says the subscription is gone (404/410) so the caller can prune. */
 async function sendPush(env: PushEnv, endpoint: string): Promise<boolean> {
   if (!env.VAPID_PRIVATE_JWK || !env.VAPID_PUBLIC_KEY) return true;
-  const audience = new URL(endpoint).origin;
-  const jwt = await vapidJwt(env.VAPID_PRIVATE_JWK, audience);
   try {
+    const audience = new URL(endpoint).origin;
+    const jwt = await vapidJwt(env.VAPID_PRIVATE_JWK, audience);
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
