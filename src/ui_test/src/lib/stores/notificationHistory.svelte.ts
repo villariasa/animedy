@@ -3,10 +3,12 @@
 // only reaches the user if permission was granted; this store is what the
 // in-app bell icon reads, so notifications still show up here even if the
 // user never granted (or denied) browser notification permission.
-export type NotificationType = "announcement" | "episode" | "discovery" | "system";
+import { getToken, loadStoredUser } from "$lib/api/account";
+
+export type NotificationType = "announcement" | "feedback" | "episode" | "discovery" | "system";
 
 export interface NotificationEntry {
-  /** Dedup key — e.g. "announcement:123", "episode:123:5", "discovery:123:<timestamp>". */
+  /** Dedup key — e.g. "announcement:123", "feedback:45", "episode:123:5". */
   id: string;
   type: NotificationType;
   anime_id?: number | null;
@@ -84,22 +86,72 @@ class NotificationHistoryStore {
     }
   }
 
-  /** Start background polling so new announcements pop in the bell automatically. */
+  /** For admin users: fetch recent feedback submissions into the notification bell. */
+  async syncAdminFeedback(): Promise<void> {
+    const user = loadStoredUser();
+    if (!user || user.role !== "admin") return;
+    const token = getToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/admin/feedback", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as { data?: { feedback?: Array<{ id: number; nickname: string; body: string; created_at: string }> } };
+      const list = json?.data?.feedback;
+      if (!Array.isArray(list)) return;
+
+      let changed = false;
+      for (const fb of list) {
+        const id = `feedback:${fb.id}`;
+        if (!this.items.some((e) => e.id === id)) {
+          this.items = [
+            {
+              id,
+              type: "feedback" as const,
+              anime_id: null,
+              url: "#/admin",
+              title: `Feedback from ${fb.nickname}`,
+              message: fb.body,
+              cover: null,
+              created_at: fb.created_at,
+              read: false,
+            },
+            ...this.items,
+          ].slice(0, MAX_ENTRIES);
+          changed = true;
+        }
+      }
+      if (changed) {
+        this.persist();
+      }
+    } catch {
+      // ignore network errors
+    }
+  }
+
+  async syncAll(): Promise<void> {
+    await Promise.allSettled([this.syncAnnouncements(), this.syncAdminFeedback()]);
+  }
+
+  /** Start background polling so announcements and feedback pop into the bell automatically. */
   startSync(): void {
     if (this.syncStarted) return;
     this.syncStarted = true;
-    void this.syncAnnouncements();
+    void this.syncAll();
 
     if (typeof window !== "undefined") {
       window.setInterval(() => {
         if (typeof document !== "undefined" && document.visibilityState === "visible") {
-          void this.syncAnnouncements();
+          void this.syncAll();
         }
-      }, 20_000);
+      }, 15_000);
 
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
-          void this.syncAnnouncements();
+          void this.syncAll();
         }
       });
     }

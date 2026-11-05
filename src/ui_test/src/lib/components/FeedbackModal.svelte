@@ -4,6 +4,7 @@
   import { fade, fly } from "svelte/transition";
   import { auth } from "$lib/stores/auth.svelte";
   import { apiSendFeedback, getGuestNickname } from "$lib/api/account";
+  import { notificationHistory } from "$lib/stores/notificationHistory.svelte";
 
   let { isOpen = $bindable(false) }: { isOpen?: boolean } = $props();
 
@@ -25,6 +26,7 @@
     note = null;
     try {
       await apiSendFeedback(body.trim());
+      void notificationHistory.syncAdminFeedback();
       note = { type: "success", message: "Sent — thank you! 💜" };
       body = "";
       setTimeout(() => close(), 1500);

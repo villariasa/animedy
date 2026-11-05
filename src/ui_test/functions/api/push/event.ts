@@ -7,8 +7,8 @@ import type { PagesFunction } from "../_lib/types";
 export const onRequestGet: PagesFunction = async (context) => {
   const db = context.env.DB;
 
-  const [feedback, reset] = await db.batch<{ at: string }>([
-    db.prepare(`SELECT created_at AS at FROM feedback ORDER BY id DESC LIMIT 1`),
+  const [feedback, reset] = await db.batch<{ at: string; nickname?: string }>([
+    db.prepare(`SELECT created_at AS at, nickname FROM feedback ORDER BY id DESC LIMIT 1`),
     db.prepare(
       `SELECT requested_at AS at FROM password_resets WHERE status = 'pending' ORDER BY requested_at DESC LIMIT 1`
     ),
@@ -17,17 +17,24 @@ export const onRequestGet: PagesFunction = async (context) => {
   const toMs = (at: string | undefined): number =>
     at ? Date.parse(at.includes("T") ? at : at.replace(" ", "T") + "Z") : 0;
 
-  const feedbackAt = toMs(feedback.results[0]?.at);
-  const resetAt = toMs(reset.results[0]?.at);
-  const freshMs = 5 * 60 * 1000;
+  const fbRow = feedback.results[0];
+  const resetRow = reset.results[0];
+  const feedbackAt = toMs(fbRow?.at);
+  const resetAt = toMs(resetRow?.at);
+  const freshMs = 15 * 60 * 1000;
   const now = Date.now();
 
   let type: "feedback" | "reset" | null = null;
-  if (feedbackAt > resetAt && now - feedbackAt < freshMs) type = "feedback";
-  else if (resetAt > 0 && now - resetAt < freshMs) type = "reset";
+  let detail = "";
+  if (feedbackAt >= resetAt && feedbackAt > 0 && now - feedbackAt < freshMs) {
+    type = "feedback";
+    detail = fbRow?.nickname ? `from ${fbRow.nickname}` : "";
+  } else if (resetAt > 0 && now - resetAt < freshMs) {
+    type = "reset";
+  }
 
   return Response.json(
-    { success: true, http_code: 200, message: "Latest event", data: { type } },
+    { success: true, http_code: 200, message: "Latest event", data: { type, detail } },
     { status: 200, headers: { "Cache-Control": "no-store" } }
   );
 };

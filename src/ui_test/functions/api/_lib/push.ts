@@ -73,24 +73,28 @@ async function sendPush(env: PushEnv, endpoint: string): Promise<boolean> {
 }
 
 async function notifySubscriptions(env: Env, db: D1Database, adminOnly: boolean): Promise<void> {
-  const subs = await db
-    .prepare(
-      adminOnly
-        ? `SELECT ps.id, ps.endpoint FROM push_subscriptions ps
-           JOIN users u ON u.id = ps.user_id WHERE u.role = 'admin'`
-        : `SELECT ps.id, ps.endpoint FROM push_subscriptions ps`
-    )
-    .all<SubscriptionRow>();
+  try {
+    const subs = await db
+      .prepare(
+        adminOnly
+          ? `SELECT ps.id, ps.endpoint FROM push_subscriptions ps
+             JOIN users u ON u.id = ps.user_id WHERE u.role = 'admin'`
+          : `SELECT ps.id, ps.endpoint FROM push_subscriptions ps`
+      )
+      .all<SubscriptionRow>();
 
-  const dead: number[] = [];
-  await Promise.all(
-    subs.results.map(async (sub) => {
-      const alive = await sendPush(env as PushEnv, sub.endpoint);
-      if (!alive) dead.push(sub.id);
-    })
-  );
-  for (const id of dead) {
-    await db.prepare(`DELETE FROM push_subscriptions WHERE id = ?`).bind(id).run();
+    const dead: number[] = [];
+    await Promise.all(
+      (subs?.results || []).map(async (sub) => {
+        const alive = await sendPush(env as PushEnv, sub.endpoint);
+        if (!alive) dead.push(sub.id);
+      })
+    );
+    for (const id of dead) {
+      await db.prepare(`DELETE FROM push_subscriptions WHERE id = ?`).bind(id).run();
+    }
+  } catch (err) {
+    console.error("[push] notifySubscriptions failed:", err);
   }
 }
 

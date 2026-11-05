@@ -99,10 +99,17 @@ self.addEventListener("push", (event) => {
           const res = await fetch("/api/push/event", { cache: "no-store" });
           const json = await res.json();
           const type = json && json.data && json.data.type;
+          const detail = json && json.data && json.data.detail;
           if (type === "feedback") {
-            body = "New feedback received — open the admin dashboard to read it.";
+            title = "💬 New Feedback";
+            body = detail
+              ? `New feedback ${detail} — tap to open admin dashboard.`
+              : "New feedback received — tap to open admin dashboard.";
+            url = "/#/admin";
           } else if (type === "reset") {
-            body = "New password reset request — open the admin dashboard to review it.";
+            title = "🔐 Password Reset";
+            body = "New password reset request — tap to review in admin dashboard.";
+            url = "/#/admin";
           }
         } catch (_) {
           // keep the generic text
