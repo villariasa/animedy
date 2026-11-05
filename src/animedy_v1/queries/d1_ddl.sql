@@ -294,3 +294,25 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions (user_id);
+
+-- ============================================================
+-- 18. announcements (PLAN_ANNOUNCEMENTS.md — admin push announcements)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS announcements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+-- ============================================================
+-- 19. chat_typing (global chat "X is typing…" indicator)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_typing (
+  user_id INTEGER PRIMARY KEY,
+  username TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);

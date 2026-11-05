@@ -386,6 +386,12 @@ export function apiAdminResolveReset(id: number, action: "approve" | "deny"): Pr
   return request(`/api/admin/password-resets/${id}`, { method: "PUT", body: { action } });
 }
 
+// ---------- announcements ----------
+
+export function apiAnnounce(title: string, body: string): Promise<{ id: number; title: string }> {
+  return request("/api/admin/announce", { method: "POST", body: { title, body } });
+}
+
 // ---------- global chat ----------
 
 export interface ChatMessage {

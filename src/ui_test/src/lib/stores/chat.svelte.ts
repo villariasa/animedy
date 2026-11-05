@@ -5,50 +5,72 @@
 import { apiChatFetch, apiChatSend, apiChatDelete, type ChatMessage } from "$lib/api/account";
 import { ApiError } from "$lib/api/client";
 
-const POLL_MS = 4_000;
+const POLL_OPEN_MS = 4_000;
+// Background polling while the panel is closed keeps the unread badge live.
+// Slow on purpose: the GET is edge-cached, so this is one cheap request per
+// device per 30s, most of them CDN cache hits.
+const POLL_CLOSED_MS = 30_000;
 const MAX_IN_MEMORY = 200;
+const LAST_READ_KEY = "animedy.chat_last_read";
+
+function loadLastRead(): number {
+  try {
+    return Number(localStorage.getItem(LAST_READ_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
 
 class ChatStore {
   open = $state(false);
   messages = $state<ChatMessage[]>([]);
   sending = $state(false);
   error = $state("");
-  /** Unread count while the panel is closed (after it was opened once). */
+  /** Messages newer than the last one seen on this device. */
   unread = $state(0);
 
   private latestId = 0;
+  private lastReadId = loadLastRead();
   private timer: ReturnType<typeof setInterval> | null = null;
-  private everOpened = false;
+
+  /** Called once from GlobalChat on mount — starts the background poll so the
+   * unread badge works before the panel is ever opened. */
+  init(): void {
+    this.startPolling();
+  }
 
   toggle(): void {
     this.open = !this.open;
     if (this.open) {
-      this.everOpened = true;
-      this.unread = 0;
-      this.startPolling();
-    } else {
-      this.stopPolling();
+      this.markRead();
     }
+    this.startPolling(); // re-arm at the open/closed cadence
   }
 
   close(): void {
     this.open = false;
-    this.stopPolling();
+    this.startPolling();
+  }
+
+  private markRead(): void {
+    this.lastReadId = Math.max(this.lastReadId, this.latestId);
+    this.unread = 0;
+    try {
+      localStorage.setItem(LAST_READ_KEY, String(this.lastReadId));
+    } catch {
+      // storage disabled
+    }
   }
 
   private startPolling(): void {
-    if (this.timer) return;
+    if (this.timer) clearInterval(this.timer);
     void this.poll();
-    this.timer = setInterval(() => {
-      if (document.visibilityState === "visible") void this.poll();
-    }, POLL_MS);
-  }
-
-  private stopPolling(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    this.timer = setInterval(
+      () => {
+        if (document.visibilityState === "visible") void this.poll();
+      },
+      this.open ? POLL_OPEN_MS : POLL_CLOSED_MS
+    );
   }
 
   private async poll(): Promise<void> {
@@ -56,11 +78,13 @@ class ChatStore {
       const data = await apiChatFetch(this.latestId > 0 ? this.latestId : undefined);
       if (data.messages.length > 0) {
         this.merge(data.messages);
-        if (!this.open && this.everOpened) {
-          this.unread += data.messages.length;
-        }
       }
       this.latestId = Math.max(this.latestId, data.latest_id);
+      if (this.open) {
+        this.markRead();
+      } else {
+        this.unread = this.messages.filter((m) => m.id > this.lastReadId).length;
+      }
     } catch {
       // transient network/API failure — next tick retries
     }
@@ -84,6 +108,7 @@ class ChatStore {
       const { message } = await apiChatSend(text);
       this.merge([message]);
       this.latestId = Math.max(this.latestId, message.id);
+      this.markRead(); // your own message is never "unread"
       return true;
     } catch (err) {
       this.error =

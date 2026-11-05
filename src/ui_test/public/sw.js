@@ -65,19 +65,40 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-/* --- Web Push: admin alerts (password reset requests etc.) ---
+/* --- Web Push: announcements + admin alerts ---
  * Pushes arrive payload-less (the server only sends a VAPID-authenticated
- * wake-up), so the notification text is generic. Clicking opens the admin
- * dashboard, focusing an existing window when there is one. */
+ * wake-up), so the worker asks the API what happened: a fresh announcement
+ * (last 5 min) shows its own title/body and opens the app; otherwise it's an
+ * admin alert (password reset request) and opens the admin dashboard. */
 self.addEventListener("push", (event) => {
   event.waitUntil(
-    self.registration.showNotification("Animedy Admin", {
-      body: "New password reset request — open the admin dashboard to review it.",
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      tag: "animedy-admin-alert",
-      data: { url: "/#/admin" }
-    })
+    (async () => {
+      let title = "Animedy Admin";
+      let body = "New password reset request — open the admin dashboard to review it.";
+      let url = "/#/admin";
+      try {
+        const res = await fetch("/api/announcements/latest", { cache: "no-store" });
+        const json = await res.json();
+        const a = json && json.data && json.data.announcement;
+        if (a && a.created_at) {
+          const at = Date.parse(a.created_at.includes("T") ? a.created_at : a.created_at.replace(" ", "T") + "Z");
+          if (Date.now() - at < 5 * 60 * 1000) {
+            title = a.title;
+            body = a.body;
+            url = "/";
+          }
+        }
+      } catch (_) {
+        // offline or API hiccup — fall through to the generic admin alert
+      }
+      return self.registration.showNotification(title, {
+        body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        tag: "animedy-push",
+        data: { url }
+      });
+    })()
   );
 });
 

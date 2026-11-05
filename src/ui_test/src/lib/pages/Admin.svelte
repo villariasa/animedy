@@ -7,12 +7,13 @@
     apiAdminUsers,
     apiAdminResetRequests,
     apiAdminResolveReset,
+    apiAnnounce,
     type AdminSession,
     type AdminUser,
     type PasswordResetRequest
   } from "$lib/api/account";
 
-  import { pushSupported, currentPushSubscription, enableAdminPush, disableAdminPush } from "$lib/push";
+  import { pushSupported, currentPushSubscription, enablePush, disablePush } from "$lib/push";
 
   let sessions = $state<AdminSession[]>([]);
   let users = $state<AdminUser[]>([]);
@@ -33,10 +34,10 @@
     pushNote = "";
     try {
       if (pushEnabled) {
-        await disableAdminPush();
+        await disablePush();
         pushEnabled = false;
       } else {
-        const problem = await enableAdminPush();
+        const problem = await enablePush();
         if (problem) {
           pushNote = problem;
         } else {
@@ -46,6 +47,29 @@
       }
     } finally {
       pushBusy = false;
+    }
+  }
+
+  // Announcement composer
+  let annTitle = $state("");
+  let annBody = $state("");
+  let annBusy = $state(false);
+  let annNote = $state("");
+
+  async function sendAnnouncement(e: SubmitEvent): Promise<void> {
+    e.preventDefault();
+    if (annBusy || !annTitle.trim() || !annBody.trim()) return;
+    annBusy = true;
+    annNote = "";
+    try {
+      await apiAnnounce(annTitle.trim(), annBody.trim());
+      annNote = "Announcement pushed to every subscribed device.";
+      annTitle = "";
+      annBody = "";
+    } catch (err) {
+      annNote = err instanceof Error ? err.message : "Failed to send";
+    } finally {
+      annBusy = false;
     }
   }
 
@@ -150,6 +174,44 @@
         {errorMessage}
       </p>
     {/if}
+
+    <!-- Announcement composer -->
+    <section class="mt-4 rounded-xl border border-border bg-card/80 p-4">
+      <h2 class="text-sm font-medium">📢 Send announcement</h2>
+      <p class="mt-0.5 text-xs text-muted-foreground">
+        Pushed as an OS notification to every device that enabled notifications — even with the app closed.
+      </p>
+      <form class="mt-3 flex flex-col gap-2" onsubmit={sendAnnouncement}>
+        <input
+          type="text"
+          bind:value={annTitle}
+          maxlength="100"
+          placeholder="Title (e.g. New episodes are up!)"
+          class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        />
+        <textarea
+          bind:value={annBody}
+          maxlength="500"
+          rows="2"
+          placeholder="Message…"
+          class="resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        ></textarea>
+        <div class="flex items-center justify-between gap-2">
+          {#if annNote}
+            <span class="text-xs text-muted-foreground">{annNote}</span>
+          {:else}
+            <span></span>
+          {/if}
+          <button
+            type="submit"
+            disabled={annBusy || !annTitle.trim() || !annBody.trim()}
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+          >
+            {annBusy ? "Sending…" : "Push announcement"}
+          </button>
+        </div>
+      </form>
+    </section>
 
     <!-- Summary tiles -->
     <div class="mt-4 grid grid-cols-3 gap-3">

@@ -3,6 +3,7 @@
   import HoverSelect from "$lib/components/HoverSelect.svelte";
   import { settings, DEFAULT_SETTINGS } from "$lib/stores/settings.svelte";
   import { auth } from "$lib/stores/auth.svelte";
+  import { pushSupported, currentPushSubscription, enablePush, disablePush } from "$lib/push";
   import { buildBackup, downloadBackup, restoreBackup, BackupParseError } from "$lib/backup";
   import {
     notificationsSupported,
@@ -33,6 +34,37 @@
       avatarStatus = { type: "error", message: err instanceof Error ? err.message : "Upload failed" };
     } finally {
       avatarBusy = false;
+    }
+  }
+
+  // Push notifications (announcements) — any signed-in account
+  let accPushEnabled = $state(false);
+  let accPushBusy = $state(false);
+  let accPushNote = $state("");
+
+  $effect(() => {
+    if (!auth.isLoggedIn) return;
+    void currentPushSubscription().then((sub) => (accPushEnabled = sub !== null));
+  });
+
+  async function toggleAccountPush(): Promise<void> {
+    accPushBusy = true;
+    accPushNote = "";
+    try {
+      if (accPushEnabled) {
+        await disablePush();
+        accPushEnabled = false;
+      } else {
+        const problem = await enablePush();
+        if (problem) {
+          accPushNote = problem;
+        } else {
+          accPushEnabled = true;
+          accPushNote = "You'll get announcements even when the app is closed.";
+        }
+      }
+    } finally {
+      accPushBusy = false;
     }
   }
 
@@ -225,6 +257,25 @@
           onchange={(e) => void onAvatarPicked(e)}
         />
       </div>
+
+      {#if pushSupported()}
+        <div class="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">Announcements</p>
+            <p class="text-xs text-muted-foreground">
+              {accPushNote || "Get site announcements as notifications, even when the app is closed."}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={accPushBusy}
+            onclick={() => void toggleAccountPush()}
+            class="shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 {accPushEnabled ? 'border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10' : 'border-border text-muted-foreground hover:bg-accent'}"
+          >
+            {accPushBusy ? "…" : accPushEnabled ? "🔔 On" : "🔕 Enable"}
+          </button>
+        </div>
+      {/if}
     </section>
   {/if}
 

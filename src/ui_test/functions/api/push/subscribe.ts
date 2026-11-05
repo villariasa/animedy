@@ -1,12 +1,12 @@
 import type { PagesFunction } from "../_lib/types";
 import { ok, fail, readJson } from "../_lib/http";
-import { requireAdmin } from "../_lib/auth";
+import { requireAuth } from "../_lib/auth";
 
-/** Register this device for admin push alerts. Admin-only — push is only
- * used for admin notifications (reset requests), so regular accounts have
- * nothing to subscribe to. */
+/** Register this device for push notifications. Any signed-in account can
+ * subscribe (announcements go to everyone); reset-request alerts are still
+ * filtered to admin-role subscriptions when sending. */
 export const onRequestPost: PagesFunction = async (context) => {
-  const auth = await requireAdmin(context);
+  const auth = await requireAuth(context);
   if ("response" in auth) return auth.response;
 
   const body = await readJson(context.request);
@@ -33,7 +33,7 @@ export const onRequestPost: PagesFunction = async (context) => {
 };
 
 export const onRequestDelete: PagesFunction = async (context) => {
-  const auth = await requireAdmin(context);
+  const auth = await requireAuth(context);
   if ("response" in auth) return auth.response;
 
   const body = await readJson(context.request);

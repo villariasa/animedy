@@ -1,4 +1,4 @@
-// Web Push subscription management for admin alerts. Pairs with
+// Web Push subscription management (admin alerts + announcements). Pairs with
 // functions/api/_lib/push.ts (server sender) and the push handlers in
 // public/sw.js. Works while the PWA is closed — the push service wakes the
 // service worker. iOS requires the PWA installed to the home screen (16.4+).
@@ -35,7 +35,7 @@ export async function currentPushSubscription(): Promise<PushSubscription | null
 
 /** Ask permission, subscribe this device, and register it with the server.
  * Returns an error string, or null on success. */
-export async function enableAdminPush(): Promise<string | null> {
+export async function enablePush(): Promise<string | null> {
   if (!pushSupported()) return "Push isn't supported in this browser";
   const reg = await registration();
   if (!reg) return "Service worker not active (production builds only)";
@@ -67,7 +67,7 @@ export async function enableAdminPush(): Promise<string | null> {
   return null;
 }
 
-export async function disableAdminPush(): Promise<void> {
+export async function disablePush(): Promise<void> {
   const sub = await currentPushSubscription();
   if (!sub) return;
   await fetch("/api/push/subscribe", {

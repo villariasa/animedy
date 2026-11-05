@@ -71,14 +71,13 @@ async function sendPush(env: PushEnv, endpoint: string): Promise<boolean> {
   }
 }
 
-/** Pushes a wake-up to every admin device subscription; prunes dead ones. */
-export async function notifyAdmins(env: Env, db: D1Database): Promise<void> {
+async function notifySubscriptions(env: Env, db: D1Database, adminOnly: boolean): Promise<void> {
   const subs = await db
     .prepare(
-      `SELECT ps.id, ps.endpoint
-       FROM push_subscriptions ps
-       JOIN users u ON u.id = ps.user_id
-       WHERE u.role = 'admin'`
+      adminOnly
+        ? `SELECT ps.id, ps.endpoint FROM push_subscriptions ps
+           JOIN users u ON u.id = ps.user_id WHERE u.role = 'admin'`
+        : `SELECT ps.id, ps.endpoint FROM push_subscriptions ps`
     )
     .all<SubscriptionRow>();
 
@@ -92,4 +91,14 @@ export async function notifyAdmins(env: Env, db: D1Database): Promise<void> {
   for (const id of dead) {
     await db.prepare(`DELETE FROM push_subscriptions WHERE id = ?`).bind(id).run();
   }
+}
+
+/** Pushes a wake-up to every admin device subscription; prunes dead ones. */
+export function notifyAdmins(env: Env, db: D1Database): Promise<void> {
+  return notifySubscriptions(env, db, true);
+}
+
+/** Pushes a wake-up to EVERY subscribed device (announcements). */
+export function notifyEveryone(env: Env, db: D1Database): Promise<void> {
+  return notifySubscriptions(env, db, false);
 }

@@ -48,12 +48,23 @@ export const onRequestGet: PagesFunction = async (context) => {
     rows = result.results.reverse();
   }
 
+  // Who's typing right now (pings land via POST /api/chat/typing).
+  const typing = await db
+    .prepare(
+      `SELECT username FROM chat_typing WHERE updated_at >= datetime('now', '-6 seconds') LIMIT 5`
+    )
+    .all<{ username: string }>();
+
   return Response.json(
     {
       success: true,
       http_code: 200,
       message: "Messages retrieved",
-      data: { messages: rows, latest_id: rows.length > 0 ? rows[rows.length - 1].id : (since ?? 0) },
+      data: {
+        messages: rows,
+        latest_id: rows.length > 0 ? rows[rows.length - 1].id : (since ?? 0),
+        typing: typing.results.map((t) => t.username),
+      },
     },
     {
       status: 200,
@@ -101,11 +112,12 @@ export const onRequestPost: PagesFunction = async (context) => {
     .bind(userId, auth.claims.username, avatarUrl, text)
     .run();
 
-  // Opportunistic prune: keep roughly the newest 2000 rows.
+  // Opportunistic prune + clear the sender's typing flag (they just sent).
   context.waitUntil(
-    db
-      .prepare(`DELETE FROM chat_messages WHERE id <= (SELECT COALESCE(MAX(id), 0) - 2000 FROM chat_messages)`)
-      .run()
+    db.batch([
+      db.prepare(`DELETE FROM chat_messages WHERE id <= (SELECT COALESCE(MAX(id), 0) - 2000 FROM chat_messages)`),
+      db.prepare(`DELETE FROM chat_typing WHERE user_id = ? OR updated_at < datetime('now', '-60 seconds')`).bind(userId),
+    ])
   );
 
   const message: ChatMessageRow = {
