@@ -12,6 +12,8 @@
     apiAdminDeleteFeedback,
     apiPushStatus,
     apiPushTest,
+    apiChatMute,
+    apiChatUnmute,
     type PushStatus,
     type FeedbackEntry,
     type AdminSession,
@@ -52,6 +54,30 @@
     } finally {
       pushTestBusy = false;
     }
+  }
+
+  async function muteUser(u: AdminUser): Promise<void> {
+    try {
+      await apiChatMute(u.id, 24);
+      u.muted_until = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : "Failed to mute user";
+    }
+  }
+
+  async function unmuteUser(u: AdminUser): Promise<void> {
+    try {
+      await apiChatUnmute(u.id);
+      u.muted_until = null;
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : "Failed to unmute user";
+    }
+  }
+
+  function isMuted(until?: string | null): boolean {
+    if (!until) return false;
+    const ms = Date.parse(until.includes("T") ? until : until.replace(" ", "T") + "Z");
+    return !Number.isNaN(ms) && ms > Date.now();
   }
 
   $effect(() => {
@@ -481,11 +507,13 @@
             <th class="px-3 py-2">Dropped</th>
             <th class="px-3 py-2">Last active</th>
             <th class="px-3 py-2">Joined</th>
+            <th class="px-3 py-2">Chat status</th>
+            <th class="px-3 py-2 text-right">Action</th>
           </tr>
         </thead>
         <tbody>
           {#if loading}
-            <tr><td colspan="10" class="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+            <tr><td colspan="12" class="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
           {:else}
             {#each users as u (u.id)}
               <tr class="border-t border-border/60">
@@ -504,6 +532,39 @@
                 <td class="px-3 py-2">{u.dropped_count}</td>
                 <td class="px-3 py-2 text-muted-foreground">{relTime(u.last_active_at)}</td>
                 <td class="px-3 py-2 text-muted-foreground">{relTime(u.created_at)}</td>
+                <td class="px-3 py-2">
+                  {#if isMuted(u.muted_until)}
+                    <span
+                      class="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400"
+                      title={u.mute_reason ? `Reason: ${u.mute_reason}` : "Muted"}
+                    >
+                      🔇 Muted
+                    </span>
+                  {:else}
+                    <span class="text-xs text-muted-foreground">Active</span>
+                  {/if}
+                </td>
+                <td class="px-3 py-2 text-right">
+                  {#if u.role !== "admin"}
+                    {#if isMuted(u.muted_until)}
+                      <button
+                        type="button"
+                        onclick={() => void unmuteUser(u)}
+                        class="rounded-md bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/25"
+                      >
+                        Unmute
+                      </button>
+                    {:else}
+                      <button
+                        type="button"
+                        onclick={() => void muteUser(u)}
+                        class="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-400"
+                      >
+                        Mute
+                      </button>
+                    {/if}
+                  {/if}
+                </td>
               </tr>
             {/each}
           {/if}

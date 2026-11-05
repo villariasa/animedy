@@ -65,6 +65,8 @@ export interface AdminUser {
   plan_count: number;
   dropped_count: number;
   last_active_at: string | null;
+  muted_until?: string | null;
+  mute_reason?: string | null;
 }
 
 // ---------- token/session helpers ----------
@@ -465,6 +467,7 @@ export interface ChatMessage {
   avatar_url?: string | null;
   body: string;
   created_at: string;
+  is_muted?: number | null;
 }
 
 export function apiChatFetch(

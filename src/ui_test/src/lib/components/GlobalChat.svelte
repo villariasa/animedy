@@ -6,7 +6,7 @@
   import { chat } from "$lib/stores/chat.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { router } from "$lib/router.svelte";
-  import { apiChatMute } from "$lib/api/account";
+  import { apiChatMute, apiChatUnmute } from "$lib/api/account";
 
   let draft = $state("");
   let feedEl = $state<HTMLDivElement | undefined>();
@@ -48,7 +48,19 @@
 
   async function muteUser(userId: number, username: string): Promise<void> {
     await apiChatMute(userId, 24).catch(() => undefined);
+    for (const m of chat.messages) {
+      if (m.user_id === userId) m.is_muted = 1;
+    }
     mutedNotice = `${username} muted for 24h`;
+    setTimeout(() => (mutedNotice = ""), 3000);
+  }
+
+  async function unmuteUser(userId: number, username: string): Promise<void> {
+    await apiChatUnmute(userId).catch(() => undefined);
+    for (const m of chat.messages) {
+      if (m.user_id === userId) m.is_muted = 0;
+    }
+    mutedNotice = `${username} unmuted`;
     setTimeout(() => (mutedNotice = ""), 3000);
   }
 </script>
@@ -122,21 +134,32 @@
               {/if}
               <div class="min-w-0 flex-1">
                 <span class="font-semibold {msg.user_id === auth.user?.id ? 'text-primary' : ''}">{msg.username}</span>
+                {#if msg.is_muted && auth.isAdmin}
+                  <span class="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-bold text-amber-400">muted</span>
+                {/if}
                 <span class="ml-1.5 text-[10px] text-muted-foreground">{fmtTime(msg.created_at)}</span>
                 <p class="break-words text-foreground/90">{msg.body}</p>
               </div>
               {#if auth.isAdmin && msg.user_id !== auth.user?.id}
-                <div class="hidden shrink-0 gap-1 group-hover:flex">
+                <div class="hidden shrink-0 items-center gap-1 group-hover:flex">
                   <button
                     type="button"
                     onclick={() => void chat.remove(msg.id)}
                     class="rounded px-1 text-[10px] text-muted-foreground hover:text-red-400"
                     title="Delete message">✕</button>
-                  <button
-                    type="button"
-                    onclick={() => void muteUser(msg.user_id, msg.username)}
-                    class="rounded px-1 text-[10px] text-muted-foreground hover:text-amber-400"
-                    title="Mute user 24h">🔇</button>
+                  {#if msg.is_muted}
+                    <button
+                      type="button"
+                      onclick={() => void unmuteUser(msg.user_id, msg.username)}
+                      class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/25"
+                      title="Unmute user">Unmute</button>
+                  {:else}
+                    <button
+                      type="button"
+                      onclick={() => void muteUser(msg.user_id, msg.username)}
+                      class="rounded px-1 text-[10px] text-muted-foreground hover:text-amber-400"
+                      title="Mute user 24h">🔇</button>
+                  {/if}
                 </div>
               {/if}
             </div>

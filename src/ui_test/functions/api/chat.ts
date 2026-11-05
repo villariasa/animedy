@@ -13,6 +13,7 @@ export interface ChatMessageRow {
   avatar_url?: string | null;
   body: string;
   created_at: string;
+  is_muted?: number | null;
 }
 
 /**
@@ -29,7 +30,8 @@ export const onRequestGet: PagesFunction = async (context) => {
   if (since !== null && Number.isInteger(since) && since >= 0) {
     const result = await db
       .prepare(
-        `SELECT id, user_id, username, avatar_url, body, created_at
+        `SELECT id, user_id, username, avatar_url, body, created_at,
+                (SELECT 1 FROM chat_mutes cm WHERE cm.user_id = chat_messages.user_id AND (cm.muted_until IS NULL OR cm.muted_until > datetime('now'))) AS is_muted
          FROM chat_messages WHERE deleted = 0 AND id > ?
          ORDER BY id ASC LIMIT 100`
       )
@@ -39,7 +41,8 @@ export const onRequestGet: PagesFunction = async (context) => {
   } else {
     const result = await db
       .prepare(
-        `SELECT id, user_id, username, avatar_url, body, created_at
+        `SELECT id, user_id, username, avatar_url, body, created_at,
+                (SELECT 1 FROM chat_mutes cm WHERE cm.user_id = chat_messages.user_id AND (cm.muted_until IS NULL OR cm.muted_until > datetime('now'))) AS is_muted
          FROM chat_messages WHERE deleted = 0
          ORDER BY id DESC LIMIT ?`
       )
