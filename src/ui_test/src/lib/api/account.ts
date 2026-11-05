@@ -299,6 +299,80 @@ export function apiAdminActivity(): Promise<{ sessions: AdminSession[]; now: str
   return request("/api/admin/activity");
 }
 
+// ---------- password reset (admin-approved) ----------
+
+const PWRESET_KEY = "animedy.pwreset";
+
+export interface PasswordResetRequest {
+  id: number;
+  user_id: number;
+  username: string;
+  email: string;
+  status: "pending" | "approved" | "denied";
+  requested_at: string;
+  resolved_at: string | null;
+}
+
+/** The device secret proving this browser made the reset request. */
+export function getResetSecret(identifier: string): string {
+  try {
+    const raw = localStorage.getItem(PWRESET_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as { identifier: string; secret: string };
+      if (saved.identifier === identifier) return saved.secret;
+    }
+  } catch {
+    // storage broken — fall through to a fresh secret
+  }
+  const secret = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  try {
+    localStorage.setItem(PWRESET_KEY, JSON.stringify({ identifier, secret }));
+  } catch {
+    // storage disabled
+  }
+  return secret;
+}
+
+export function clearResetSecret(): void {
+  try {
+    localStorage.removeItem(PWRESET_KEY);
+  } catch {
+    // storage disabled
+  }
+}
+
+export function apiForgotRequest(identifier: string, turnstileToken?: string): Promise<{ requested: boolean }> {
+  return request("/api/auth/forgot", {
+    method: "POST",
+    body: { identifier, client_secret: getResetSecret(identifier), turnstile_token: turnstileToken },
+    auth: false,
+  });
+}
+
+export function apiForgotStatus(identifier: string): Promise<{ status: "none" | "pending" | "approved" | "denied" | "expired" }> {
+  const secret = getResetSecret(identifier);
+  return request(
+    `/api/auth/forgot?identifier=${encodeURIComponent(identifier)}&client_secret=${encodeURIComponent(secret)}`,
+    { auth: false }
+  );
+}
+
+export function apiForgotReset(identifier: string, newPassword: string): Promise<{ username: string }> {
+  return request("/api/auth/forgot-reset", {
+    method: "POST",
+    body: { identifier, client_secret: getResetSecret(identifier), new_password: newPassword },
+    auth: false,
+  });
+}
+
+export function apiAdminResetRequests(): Promise<{ requests: PasswordResetRequest[] }> {
+  return request("/api/admin/password-resets");
+}
+
+export function apiAdminResolveReset(id: number, action: "approve" | "deny"): Promise<unknown> {
+  return request(`/api/admin/password-resets/${id}`, { method: "PUT", body: { action } });
+}
+
 // ---------- global chat ----------
 
 export interface ChatMessage {
@@ -337,7 +411,19 @@ export function apiAdminUsers(): Promise<{ users: AdminUser[] }> {
 
 // ---------- profile avatar ----------
 
+/** Mirrors functions/api/user/avatar.ts — keep in sync. */
+export const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB
+export const AVATAR_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
 export async function apiUploadAvatar(file: File): Promise<{ avatar_url: string }> {
+  // Reject locally before transferring anything — the server enforces the
+  // same limits, but failing fast saves uploading megabytes just to get a 413.
+  if (file.size > MAX_AVATAR_BYTES) {
+    throw new ApiError("Image is too large — max 2 MB", 413);
+  }
+  if (!AVATAR_MIME_TYPES.has(file.type)) {
+    throw new ApiError("Use a JPEG, PNG, WebP or GIF image", 415);
+  }
   const token = getToken();
   const formData = new FormData();
   formData.append("file", file);

@@ -263,3 +263,18 @@ CREATE TABLE IF NOT EXISTS chat_mutes (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
+
+-- ============================================================
+-- 16. password_resets (admin-approved password reset flow)
+--     One active request per user; secret_hash ties the reset to
+--     the device that requested it.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS password_resets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL UNIQUE,
+  secret_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'denied')),
+  requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);

@@ -25,6 +25,7 @@
   import SignUp from "$lib/pages/SignUp.svelte";
   import Admin from "$lib/pages/Admin.svelte";
   import AccountPrompt from "$lib/components/AccountPrompt.svelte";
+  import GlobalChat from "$lib/components/GlobalChat.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { presence } from "$lib/sync/presence.svelte";
 
@@ -175,6 +176,7 @@
 
   <UndoSnackbar />
   <AccountPrompt />
+  <GlobalChat />
   <NotificationPrompt />
   <NewEpisodeNotifier />
   <DiscoveryNotifier />

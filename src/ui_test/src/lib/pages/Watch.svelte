@@ -434,10 +434,34 @@
     }
   });
 
+  // Mobile: rotate to landscape while the frame is fullscreen. Must run from
+  // the fullscreenchange handler (lock requires fullscreen to be active) so it
+  // covers every entry path — button, F key, auto-fullscreen, first gesture.
+  // Android only: iOS Safari has no screen.orientation.lock API.
+  function syncOrientationToFullscreen(): void {
+    const orientation = screen.orientation as ScreenOrientation & {
+      lock?: (o: string) => Promise<void>;
+      unlock?: () => void;
+    };
+    if (!/Mobi|Android/i.test(navigator.userAgent)) return;
+    if (document.fullscreenElement) {
+      if (typeof orientation?.lock === "function") {
+        void orientation.lock("landscape").catch(() => undefined);
+      }
+    } else {
+      try {
+        orientation?.unlock?.();
+      } catch {
+        // some browsers throw if nothing was locked
+      }
+    }
+  }
+
   // Fullscreen event listener to sync state across episodes
   $effect(() => {
     const handleFsChange = () => {
       isFullscreen = document.fullscreenElement !== null;
+      syncOrientationToFullscreen();
     };
     const handleKeydown = (e: KeyboardEvent) => {
       const activeTag = document.activeElement?.tagName;

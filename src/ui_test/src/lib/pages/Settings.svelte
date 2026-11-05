@@ -2,6 +2,7 @@
   import { Button } from "$lib/components/ui/button";
   import HoverSelect from "$lib/components/HoverSelect.svelte";
   import { settings, DEFAULT_SETTINGS } from "$lib/stores/settings.svelte";
+  import { auth } from "$lib/stores/auth.svelte";
   import { buildBackup, downloadBackup, restoreBackup, BackupParseError } from "$lib/backup";
   import {
     notificationsSupported,
@@ -12,6 +13,41 @@
 
   let notifPermission = $state<NotifPermission>(notificationPermission());
   let requestingNotif = $state(false);
+
+  // Profile picture (account section)
+  let avatarFileInput = $state<HTMLInputElement | undefined>(undefined);
+  let avatarBusy = $state(false);
+  let avatarStatus = $state<{ type: "success" | "error"; message: string } | null>(null);
+
+  async function onAvatarPicked(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    avatarBusy = true;
+    avatarStatus = null;
+    try {
+      await auth.updateAvatar(file);
+      avatarStatus = { type: "success", message: "Profile picture updated" };
+    } catch (err) {
+      avatarStatus = { type: "error", message: err instanceof Error ? err.message : "Upload failed" };
+    } finally {
+      avatarBusy = false;
+    }
+  }
+
+  async function removeAvatar(): Promise<void> {
+    avatarBusy = true;
+    avatarStatus = null;
+    try {
+      await auth.removeAvatar();
+      avatarStatus = { type: "success", message: "Profile picture removed" };
+    } catch (err) {
+      avatarStatus = { type: "error", message: err instanceof Error ? err.message : "Remove failed" };
+    } finally {
+      avatarBusy = false;
+    }
+  }
 
   async function enableNotifications(): Promise<void> {
     requestingNotif = true;
@@ -130,6 +166,67 @@
       </p>
     </div>
   </div>
+
+  <!-- Account / profile picture (signed-in only) -->
+  {#if auth.isLoggedIn}
+    <section class="rounded-2xl border border-border/80 bg-card/70 p-5 sm:p-6 shadow-xl backdrop-blur-xl">
+      <div class="flex items-center gap-2.5 mb-4">
+        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+            <path fill-rule="evenodd" d="M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-7 9a7 7 0 1 1 14 0H3Z" clip-rule="evenodd" />
+          </svg>
+        </span>
+        <h2 class="text-base font-semibold">Account</h2>
+      </div>
+      <div class="flex items-center gap-4">
+        {#if auth.user?.avatar_url}
+          <img
+            src={auth.user.avatar_url}
+            alt={auth.user.username}
+            class="h-16 w-16 rounded-full border border-border/70 object-cover"
+          />
+        {:else}
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-primary/15 text-xl font-bold uppercase text-primary">
+            {auth.user?.username.slice(0, 1)}
+          </div>
+        {/if}
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-semibold">{auth.user?.username}</p>
+          <p class="text-xs text-muted-foreground">JPEG, PNG, WebP or GIF — max 2 MB. Shows next to your messages in global chat.</p>
+          {#if avatarStatus}
+            <p class="mt-1 text-xs {avatarStatus.type === 'error' ? 'text-red-400' : 'text-emerald-400'}">{avatarStatus.message}</p>
+          {/if}
+        </div>
+        <div class="flex shrink-0 flex-col gap-1.5">
+          <button
+            type="button"
+            disabled={avatarBusy}
+            onclick={() => avatarFileInput?.click()}
+            class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+          >
+            {avatarBusy ? "Uploading…" : "Change picture"}
+          </button>
+          {#if auth.user?.avatar_url}
+            <button
+              type="button"
+              disabled={avatarBusy}
+              onclick={() => void removeAvatar()}
+              class="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              Remove
+            </button>
+          {/if}
+        </div>
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          class="hidden"
+          bind:this={avatarFileInput}
+          onchange={(e) => void onAvatarPicked(e)}
+        />
+      </div>
+    </section>
+  {/if}
 
   <form class="flex flex-col gap-6" onsubmit={onSubmit} onchange={markDirty} oninput={markDirty}>
     <!-- Player Defaults -->
