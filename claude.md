@@ -50,6 +50,16 @@ The schema has been migrated to SQLite syntax and is stored in `src/animedy_v1/q
 - `user_activity`: Presence & heartbeat session tracking for admin monitoring
 - `chat_messages`: `(id, user_id, username, avatar_url, body, deleted, created_at)` — Global chat messages with avatar
 - `chat_mutes`: `(user_id, reason, muted_by, muted_until, created_at)` — User mute records for moderation
+- `chat_typing`: `(user_id, username, updated_at)` — Ephemeral typing indicator tracking
+
+### Announcements & Web Push (from `PLAN_ANNOUNCEMENTS.md`)
+- `announcements`: `(id, title, message, url, pinned, created_at)` — System announcements with push broadcast
+- `push_subscriptions`: `(id, user_id, endpoint, p256dh, auth, created_at)` — Browser push notification subscriptions
+- `password_resets`: `(id, user_id, code, token, expires_at, created_at)` — Password reset requests with admin dispatch
+
+### Feedback Box (from `PLAN_FEEDBACK.md`)
+- `feedback`: `(id, user_id, nickname, client_id, body, created_at)` — Inbox for user & guest feedback with device nickname
+- Index: `idx_feedback_created` on `feedback(created_at)`
 
 ---
 
