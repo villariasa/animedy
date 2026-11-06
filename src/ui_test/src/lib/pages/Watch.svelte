@@ -20,6 +20,7 @@
   import Player from "$lib/components/player/Player.svelte";
   import { resolveServer3Stream, Server3Error } from "$lib/api/server3";
   import { presence } from "$lib/sync/presence.svelte";
+  import { hasToken, apiPutProgress } from "$lib/api/account";
 
   // episodeId in the route is the episode NUMBER — streams come from embed
   // providers keyed by (anilist id, episode number). No backend, no accounts.
@@ -672,25 +673,46 @@
     void saveCustomSkip();
   }
 
+  // Cross-device sync: push progress to the account at most every 15s while
+  // playing, plus immediately on completion (last-write-wins server-side).
+  let lastRemoteProgressPush = 0;
+
   async function saveRealProgress(
     pos: number,
     dur: number,
     completed: boolean,
   ): Promise<void> {
     presence.updatePosition(pos);
+    const lastWatchedAt = new Date().toISOString();
     await saveLocalProgress({
       episode_id: progressKey(animeId, episodeId),
       anime_id: animeId,
       position_seconds: Math.floor(pos),
       duration_seconds: Math.floor(dur),
       completed,
-      last_watched_at: new Date().toISOString(),
+      last_watched_at: lastWatchedAt,
       title_english: anime?.title_english ?? null,
       title_romaji: anime?.title_romaji ?? null,
       episode_number: episodeId,
       episode_title: currentEpisode?.title ?? `Episode ${episodeId}`,
       cover_image: anime?.cover_image ?? null,
     }).catch(() => undefined);
+
+    if (hasToken() && (completed || Date.now() - lastRemoteProgressPush > 15_000)) {
+      lastRemoteProgressPush = Date.now();
+      void apiPutProgress({
+        anime_id: animeId,
+        episode_number: episodeId,
+        position_seconds: Math.floor(pos),
+        duration_seconds: Math.floor(dur),
+        completed,
+        episode_title: currentEpisode?.title ?? `Episode ${episodeId}`,
+        last_watched_at: lastWatchedAt,
+        title_english: anime?.title_english ?? null,
+        title_romaji: anime?.title_romaji ?? null,
+        cover_image: anime?.cover_image ?? null,
+      }).catch(() => undefined);
+    }
   }
 
   async function onEpisodeEnded(pos: number, dur: number): Promise<void> {

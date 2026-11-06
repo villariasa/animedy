@@ -388,6 +388,49 @@ export function apiAdminResolveReset(id: number, action: "approve" | "deny"): Pr
   return request(`/api/admin/password-resets/${id}`, { method: "PUT", body: { action } });
 }
 
+// ---------- watch progress sync ----------
+
+export interface CloudProgress {
+  anime_id: number;
+  episode_number: number;
+  position_seconds: number;
+  duration_seconds: number;
+  completed: number;
+  episode_title: string | null;
+  last_watched_at: string;
+  title_english: string | null;
+  title_romaji: string | null;
+  cover_image: string | null;
+}
+
+export interface ProgressPushItem {
+  anime_id: number;
+  episode_number: number;
+  position_seconds: number;
+  duration_seconds: number;
+  completed: boolean;
+  episode_title?: string | null;
+  last_watched_at: string;
+  title_english?: string | null;
+  title_romaji?: string | null;
+  cover_image?: string | null;
+}
+
+export function apiFetchProgress(): Promise<{ progress: CloudProgress[] }> {
+  return request("/api/sync/progress");
+}
+
+export function apiPushProgressBulk(items: ProgressPushItem[]): Promise<{ saved: number }> {
+  return request("/api/sync/progress", { method: "POST", body: { items } });
+}
+
+export function apiPutProgress(item: ProgressPushItem): Promise<unknown> {
+  return request(`/api/sync/progress/${item.anime_id}/${item.episode_number}`, {
+    method: "PUT",
+    body: item,
+  });
+}
+
 // ---------- push diagnostics ----------
 
 export interface PushStatus {

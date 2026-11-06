@@ -31,14 +31,21 @@
   import { feedbackModal } from "$lib/stores/feedbackModal.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { presence } from "$lib/sync/presence.svelte";
+  import { syncProgress } from "$lib/sync/migrate.svelte";
 
   let isSearchActive = $state(false);
   let isMobileMenuOpen = $state(false);
 
   // Presence heartbeat (guests included) + token revalidation on startup.
+  // Signed-in: also merge episode progress with the cloud so watching on
+  // another device shows up here without re-logging in.
   $effect(() => {
     presence.start();
-    void auth.refresh();
+    void auth.refresh().then(() => {
+      if (auth.isLoggedIn) {
+        void syncProgress().catch(() => undefined);
+      }
+    });
   });
 
   function goHome(): void {
@@ -85,6 +92,16 @@
       <div class="sm:hidden">
         <NotificationBell />
       </div>
+    {/if}
+
+    <!-- Mobile-only Sign in shortcut for guests, beside the bell -->
+    {#if !isSearchActive && !auth.isLoggedIn}
+      <a
+        href="#/signin"
+        class="sm:hidden inline-flex shrink-0 items-center rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95"
+      >
+        Sign in
+      </a>
     {/if}
 
     <!-- Mobile-only menu button (right side): the signed-in user's avatar,
@@ -157,6 +174,23 @@
       </a>
 
       <NotificationBell />
+
+      <!-- Sign in / Sign up — only for signed-out visitors (signed-in users
+           get their avatar menu instead) -->
+      {#if !auth.isLoggedIn}
+        <a
+          href="#/signin"
+          class="inline-flex items-center rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground {router.current.name === 'signin' ? 'bg-primary/10 text-primary font-medium' : ''}"
+        >
+          Sign in
+        </a>
+        <a
+          href="#/signup"
+          class="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95"
+        >
+          Sign up
+        </a>
+      {/if}
 
       <span class="mx-1 h-5 w-px shrink-0 bg-border/70"></span>
 

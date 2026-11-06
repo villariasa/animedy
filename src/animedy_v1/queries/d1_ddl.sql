@@ -358,3 +358,26 @@ CREATE TABLE IF NOT EXISTS site_reactions (
 CREATE INDEX IF NOT EXISTS idx_site_reactions_reaction ON site_reactions (reaction);
 CREATE INDEX IF NOT EXISTS idx_site_reactions_user ON site_reactions (user_id);
 
+
+-- ============================================================
+-- 21. watch_history (cross-device episode progress sync)
+--     Keyed by AniList anime id + episode number (streams come from
+--     embed providers, so there are no server-side episode rows).
+--     last_watched_at is normalized to 'YYYY-MM-DD HH:MM:SS' and acts
+--     as the last-write-wins conflict clock across devices.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS watch_history (
+  user_id INTEGER NOT NULL,
+  anime_id INTEGER NOT NULL,
+  episode_number INTEGER NOT NULL,
+  position_seconds INTEGER NOT NULL DEFAULT 0,
+  duration_seconds INTEGER NOT NULL DEFAULT 0,
+  completed INTEGER NOT NULL DEFAULT 0,
+  episode_title TEXT,
+  last_watched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now')),
+  PRIMARY KEY (user_id, anime_id, episode_number),
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  FOREIGN KEY (anime_id) REFERENCES anime (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_watch_history_user_time ON watch_history (user_id, last_watched_at);
