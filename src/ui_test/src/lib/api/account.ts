@@ -193,23 +193,110 @@ async function request<T>(
   return envelope.data;
 }
 
+// ---------- verification gate (full-page Turnstile, PLAN_VERIFY_GATE.md) ----------
+
+const DAILY_PASS_KEY = "animedy.verify_daily";
+const AUTH_PASS_KEY = "animedy.verify_auth";
+
+interface StoredPass {
+  pass: string;
+  expires_at: number; // unix seconds
+}
+
+export function apiVerify(
+  turnstileToken: string,
+  purpose: "daily" | "auth"
+): Promise<{ pass: string; expires_at: number; daily_pass?: string; daily_expires_at?: number }> {
+  return request("/api/verify", {
+    method: "POST",
+    body: { turnstile_token: turnstileToken, purpose },
+    auth: false,
+  });
+}
+
+export function storeDailyPass(pass: string, expiresAt: number): void {
+  try {
+    localStorage.setItem(DAILY_PASS_KEY, JSON.stringify({ pass, expires_at: expiresAt }));
+  } catch {
+    // storage disabled
+  }
+}
+
+export function hasValidDailyPass(): boolean {
+  try {
+    const raw = localStorage.getItem(DAILY_PASS_KEY);
+    if (!raw) return false;
+    const stored = JSON.parse(raw) as StoredPass;
+    return stored.expires_at * 1000 > Date.now();
+  } catch {
+    // Broken storage: never gate (would loop forever).
+    return true;
+  }
+}
+
+/** Auth passes are per-tab (sessionStorage) and single-use server-side. */
+export function storeAuthPass(pass: string, expiresAt: number): void {
+  try {
+    sessionStorage.setItem(AUTH_PASS_KEY, JSON.stringify({ pass, expires_at: expiresAt }));
+  } catch {
+    // storage disabled
+  }
+}
+
+export function hasValidAuthPass(): boolean {
+  return getAuthPass() !== null;
+}
+
+function getAuthPass(): string | null {
+  try {
+    const raw = sessionStorage.getItem(AUTH_PASS_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as StoredPass;
+    return stored.expires_at * 1000 > Date.now() ? stored.pass : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthPass(): void {
+  try {
+    sessionStorage.removeItem(AUTH_PASS_KEY);
+  } catch {
+    // storage disabled
+  }
+}
+
 // ---------- auth ----------
 
-export function apiRegister(input: {
+export async function apiRegister(input: {
   email: string;
   username: string;
   password: string;
-  turnstile_token?: string;
 }): Promise<{ user: AuthUser; token: string }> {
-  return request("/api/auth/register", { method: "POST", body: input, auth: false });
+  try {
+    return await request("/api/auth/register", {
+      method: "POST",
+      body: { ...input, verify_pass: getAuthPass() },
+      auth: false,
+    });
+  } finally {
+    clearAuthPass(); // single-use server-side — never reusable client-side
+  }
 }
 
-export function apiLogin(input: {
+export async function apiLogin(input: {
   email: string;
   password: string;
-  turnstile_token?: string;
 }): Promise<{ user: AuthUser; token: string }> {
-  return request("/api/auth/login", { method: "POST", body: input, auth: false });
+  try {
+    return await request("/api/auth/login", {
+      method: "POST",
+      body: { ...input, verify_pass: getAuthPass() },
+      auth: false,
+    });
+  } finally {
+    clearAuthPass();
+  }
 }
 
 export function apiMe(): Promise<{ user: AuthUser }> {
@@ -343,12 +430,16 @@ export function clearResetSecret(): void {
   }
 }
 
-export function apiForgotRequest(identifier: string, turnstileToken?: string): Promise<{ requested: boolean }> {
-  return request("/api/auth/forgot", {
-    method: "POST",
-    body: { identifier, client_secret: getResetSecret(identifier), turnstile_token: turnstileToken },
-    auth: false,
-  });
+export async function apiForgotRequest(identifier: string): Promise<{ requested: boolean }> {
+  try {
+    return await request("/api/auth/forgot", {
+      method: "POST",
+      body: { identifier, client_secret: getResetSecret(identifier), verify_pass: getAuthPass() },
+      auth: false,
+    });
+  } finally {
+    clearAuthPass();
+  }
 }
 
 export async function apiForgotStatus(

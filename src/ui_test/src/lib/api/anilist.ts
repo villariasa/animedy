@@ -414,6 +414,35 @@ export async function browseAnimeItems(tag: BrowseTag, page = 1): Promise<AnimeS
   return (await browseAnime(tag, page)).items;
 }
 
+/** The anime season whose broadcast window contains today. */
+export function currentSeason(): { season: AnimeSeason; year: number } {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const season: AnimeSeason =
+    month <= 3 ? "WINTER" : month <= 6 ? "SPRING" : month <= 9 ? "SUMMER" : "FALL";
+  return { season, year: now.getFullYear() };
+}
+
+/** Browse a broadcast season (e.g. FALL 2026), most popular first. Includes
+ * not-yet-aired shows so next season is browsable for Plan-to-Watch. */
+export async function getSeasonalAnime(
+  season: AnimeSeason,
+  year: number,
+  page = 1
+): Promise<BrowsePage> {
+  const data = await gql<{ Page: { pageInfo: { hasNextPage: boolean }; media: AniListMedia[] } }>(
+    `anilist:seasonal:v1:${season}:${year}:p${page}`,
+    `query ($season: MediaSeason, $seasonYear: Int, $page: Int) {
+      Page(page: $page, perPage: ${BROWSE_PAGE_SIZE}) {
+        pageInfo { hasNextPage }
+        media(type: ANIME, season: $season, seasonYear: $seasonYear, sort: [POPULARITY_DESC], isAdult: false, countryOfOrigin: "JP") { ${MEDIA_FIELDS} }
+      }
+    }`,
+    { season, seasonYear: year, page }
+  );
+  return { items: data.Page.media.map((m) => toSearchItem(m)), hasNextPage: data.Page.pageInfo.hasNextPage };
+}
+
 /**
  * Hero Spotlight feed — ranking-based, not a recommendation algorithm.
  * AniList's "trending" ranking (TRENDING_DESC, real-time community activity —

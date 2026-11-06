@@ -1,14 +1,22 @@
 <script lang="ts">
   import { auth } from "$lib/stores/auth.svelte";
   import { router } from "$lib/router.svelte";
-  import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
+  import { hasValidAuthPass } from "$lib/api/account";
+  import { ApiError } from "$lib/api/client";
 
   let identifier = $state("");
   let password = $state("");
-  let turnstileToken = $state("");
   let submitting = $state(false);
   let errorMessage = $state("");
-  let turnstileWidget: TurnstileWidget | undefined;
+
+  // Every attempt needs a fresh single-use verification pass — arriving
+  // without one detours through the full-page #/verify check first.
+  function goVerify(): void {
+    router.go("/verify?purpose=auth&then=" + encodeURIComponent("/signin"));
+  }
+  $effect(() => {
+    if (!hasValidAuthPass()) goVerify();
+  });
 
   async function submit(e: SubmitEvent): Promise<void> {
     e.preventDefault();
@@ -16,11 +24,14 @@
     submitting = true;
     errorMessage = "";
     try {
-      await auth.login({ email: identifier, password, turnstile_token: turnstileToken });
+      await auth.login({ email: identifier, password });
       router.go("/");
     } catch (err) {
+      if (err instanceof ApiError && err.httpCode === 428) {
+        goVerify();
+        return;
+      }
       errorMessage = err instanceof Error ? err.message : "Sign in failed";
-      turnstileWidget?.reset();
     } finally {
       submitting = false;
     }
@@ -57,8 +68,6 @@
           class="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-primary"
         />
       </label>
-
-      <TurnstileWidget bind:this={turnstileWidget} bind:token={turnstileToken} />
 
       {#if errorMessage}
         <p class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">

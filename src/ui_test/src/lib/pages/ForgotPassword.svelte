@@ -11,13 +11,12 @@
     apiForgotReset,
     clearResetSecret,
     passwordProblems,
-    passwordStrength
+    passwordStrength,
+    hasValidAuthPass
   } from "$lib/api/account";
-  import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
+  import { ApiError } from "$lib/api/client";
 
   let identifier = $state("");
-  let turnstileToken = $state("");
-  let turnstileWidget: TurnstileWidget | undefined;
   let stage = $state<"request" | "waiting" | "reset" | "done">("request");
   let statusNote = $state("");
   let errorMessage = $state("");
@@ -29,6 +28,14 @@
   const strength = $derived(passwordStrength(newPassword));
   const confirmMismatch = $derived(confirm.length > 0 && confirm !== newPassword);
 
+  // Reset requests need a fresh single-use verification pass too.
+  function goVerify(): void {
+    router.go("/verify?purpose=auth&then=" + encodeURIComponent("/forgot"));
+  }
+  $effect(() => {
+    if (stage === "request" && !hasValidAuthPass()) goVerify();
+  });
+
   const STRENGTH_LABELS = ["", "Weak", "Okay", "Good", "Strong"];
   const STRENGTH_COLORS = ["", "bg-red-500", "bg-amber-500", "bg-lime-500", "bg-emerald-500"];
 
@@ -38,12 +45,15 @@
     busy = true;
     errorMessage = "";
     try {
-      await apiForgotRequest(identifier.trim(), turnstileToken);
+      await apiForgotRequest(identifier.trim());
       stage = "waiting";
       statusNote = "Request sent. Waiting for the admin to approve it…";
     } catch (err) {
+      if (err instanceof ApiError && err.httpCode === 428) {
+        goVerify();
+        return;
+      }
       errorMessage = err instanceof Error ? err.message : "Request failed";
-      turnstileWidget?.reset();
     } finally {
       busy = false;
     }
@@ -119,7 +129,6 @@
             placeholder="you@example.com"
           />
         </label>
-        <TurnstileWidget bind:this={turnstileWidget} bind:token={turnstileToken} />
         {#if statusNote}
           <p class="text-xs text-amber-400">{statusNote}</p>
         {/if}

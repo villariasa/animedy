@@ -15,12 +15,27 @@ export type Route =
   | { name: "signin" }
   | { name: "signup" }
   | { name: "forgot" }
+  | { name: "seasonal"; season?: string; year?: number }
+  | { name: "verify"; purpose: "daily" | "auth"; then: string }
   | { name: "admin" }
   | { name: "notfound" };
 
 function parseHash(hash: string): Route {
   let route: Route = { name: "notfound" };
-  const path = hash.replace(/^#/, "") || "/";
+  const raw = hash.replace(/^#/, "") || "/";
+  // Only the verify route carries a query string (?purpose=&then=).
+  const queryIndex = raw.indexOf("?");
+  const path = queryIndex === -1 ? raw : raw.slice(0, queryIndex);
+  if (path === "/verify") {
+    const params = new URLSearchParams(queryIndex === -1 ? "" : raw.slice(queryIndex + 1));
+    const thenParam = params.get("then") ?? "/";
+    return {
+      name: "verify",
+      purpose: params.get("purpose") === "auth" ? "auth" : "daily",
+      // Only same-app hash paths are honoured — never external URLs.
+      then: thenParam.startsWith("/") ? thenParam : "/"
+    };
+  }
   const animeMatch = /^\/anime\/(\d+)$/.exec(path);
   const watchMatch = /^\/watch\/(\d+)\/(\d+)$/.exec(path);
   if (path === "/") {
@@ -45,8 +60,19 @@ function parseHash(hash: string): Route {
     route = { name: "signup" };
   } else if (path === "/forgot") {
     route = { name: "forgot" };
+  } else if (path === "/seasonal") {
+    route = { name: "seasonal" };
   } else if (path === "/admin") {
     route = { name: "admin" };
+  } else {
+    const seasonalMatch = /^\/seasonal\/(winter|spring|summer|fall)\/(\d{4})$/i.exec(path);
+    if (seasonalMatch?.[1] !== undefined && seasonalMatch[2] !== undefined) {
+      route = {
+        name: "seasonal",
+        season: seasonalMatch[1].toUpperCase(),
+        year: Number(seasonalMatch[2])
+      };
+    }
   }
   return route;
 }

@@ -21,11 +21,16 @@ export interface NotificationEntry {
 }
 
 export const NOTIFICATION_HISTORY_KEY = "animedy.notification_history";
+const DISMISSED_KEY = "animedy.notification_dismissed";
 const MAX_ENTRIES = 50;
+const MAX_DISMISSED = 200;
 
 class NotificationHistoryStore {
   items = $state<NotificationEntry[]>([]);
   private syncStarted = false;
+  /** Ids the user cleared/dismissed — the background syncs must never
+   * resurrect these (the server still returns them on every poll). */
+  private dismissed = new Set<string>();
 
   constructor() {
     this.restore();
@@ -37,6 +42,20 @@ class NotificationHistoryStore {
       this.items = raw ? (JSON.parse(raw) as NotificationEntry[]) : [];
     } catch {
       this.items = [];
+    }
+    try {
+      const raw = localStorage.getItem(DISMISSED_KEY);
+      this.dismissed = raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      this.dismissed = new Set();
+    }
+  }
+
+  private persistDismissed(): void {
+    try {
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify([...this.dismissed].slice(-MAX_DISMISSED)));
+    } catch {
+      // storage quota or disabled
     }
   }
 
@@ -60,7 +79,7 @@ class NotificationHistoryStore {
       let changed = false;
       for (const a of list) {
         const id = `announcement:${a.id}`;
-        if (!this.items.some((e) => e.id === id)) {
+        if (!this.dismissed.has(id) && !this.items.some((e) => e.id === id)) {
           this.items = [
             {
               id,
@@ -106,7 +125,7 @@ class NotificationHistoryStore {
       let changed = false;
       for (const fb of list) {
         const id = `feedback:${fb.id}`;
-        if (!this.items.some((e) => e.id === id)) {
+        if (!this.dismissed.has(id) && !this.items.some((e) => e.id === id)) {
           this.items = [
             {
               id,
@@ -160,9 +179,17 @@ class NotificationHistoryStore {
   /** No-op if an entry with this id already exists — callers re-run their
    * detection checks periodically and shouldn't duplicate the same event. */
   add(entry: Omit<NotificationEntry, "read">): void {
-    if (this.items.some((e) => e.id === entry.id)) return;
+    if (this.dismissed.has(entry.id) || this.items.some((e) => e.id === entry.id)) return;
     this.items = [{ ...entry, read: false }, ...this.items].slice(0, MAX_ENTRIES);
     this.persist();
+  }
+
+  /** Remove one notification for good (survives the background re-syncs). */
+  dismiss(id: string): void {
+    this.items = this.items.filter((e) => e.id !== id);
+    this.dismissed.add(id);
+    this.persist();
+    this.persistDismissed();
   }
 
   markRead(id: string): void {
@@ -175,9 +202,13 @@ class NotificationHistoryStore {
     this.persist();
   }
 
+  /** Clear everything for good — ids are tombstoned so the background
+   * syncs don't bring them back on the next poll. */
   clear(): void {
+    for (const e of this.items) this.dismissed.add(e.id);
     this.items = [];
     this.persist();
+    this.persistDismissed();
   }
 
   get unreadCount(): number {

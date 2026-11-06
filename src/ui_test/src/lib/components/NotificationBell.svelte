@@ -83,13 +83,23 @@
           {/if}
         </div>
         {#if notificationHistory.items.length > 0}
-          <button
-            type="button"
-            class="text-xs font-semibold text-primary transition-opacity hover:opacity-80"
-            onclick={() => notificationHistory.markAllRead()}
-          >
-            Mark all read
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="text-xs font-semibold text-primary transition-opacity hover:opacity-80"
+              onclick={() => notificationHistory.markAllRead()}
+            >
+              Mark all read
+            </button>
+            <button
+              type="button"
+              class="text-xs font-semibold text-muted-foreground transition-colors hover:text-red-400"
+              onclick={() => notificationHistory.clear()}
+              title="Clear all notifications"
+            >
+              Clear all
+            </button>
+          </div>
         {/if}
       </div>
 
@@ -103,11 +113,12 @@
           </div>
         {:else}
           {#each notificationHistory.items as n (n.id)}
+            <div class="group relative">
             <button
               type="button"
               role="menuitem"
               onclick={() => openNotification(n)}
-              class="flex w-full items-start gap-3 p-3.5 text-left transition-colors hover:bg-accent/70 {n.read ? 'opacity-65' : 'bg-primary/5'}"
+              class="flex w-full items-start gap-3 p-3.5 pr-8 text-left transition-colors hover:bg-accent/70 {n.read ? 'opacity-65' : 'bg-primary/5'}"
             >
               <div class="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-card shadow-xs">
                 {#if n.cover}
@@ -136,6 +147,20 @@
                 <p class="mt-1 text-[10px] font-medium text-muted-foreground/70">{timeAgo(n.created_at)}</p>
               </div>
             </button>
+            <!-- Per-item dismiss (stays gone — tombstoned against re-sync) -->
+            <button
+              type="button"
+              onclick={(e) => {
+                e.stopPropagation();
+                notificationHistory.dismiss(n.id);
+              }}
+              class="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-md text-xs text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-400 group-hover:opacity-100"
+              title="Dismiss notification"
+              aria-label="Dismiss notification"
+            >
+              ✕
+            </button>
+            </div>
           {/each}
         {/if}
       </div>

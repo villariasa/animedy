@@ -1,7 +1,7 @@
 import type { PagesFunction, UserRow } from "../_lib/types";
 import { ok, fail, readJson } from "../_lib/http";
 import { verifyPassword, signToken, toProfile } from "../_lib/auth";
-import { verifyTurnstile } from "../_lib/turnstile";
+import { consumeAuthPass } from "../_lib/verifypass";
 
 export const onRequestPost: PagesFunction = async (context) => {
   const { env } = context;
@@ -9,8 +9,10 @@ export const onRequestPost: PagesFunction = async (context) => {
 
   const body = await readJson(context.request);
 
-  if (!(await verifyTurnstile(env, body.turnstile_token, context.request))) {
-    return fail("Verification challenge failed — please try again", 403);
+  // Full-page verification gate: one single-use pass per attempt (see
+  // PLAN_VERIFY_GATE.md). 428 tells the client to run the #/verify flow.
+  if (!(await consumeAuthPass(env, body.verify_pass))) {
+    return fail("Verification required", 428);
   }
   const identifier = typeof body.email === "string" ? body.email : "";
   const password = typeof body.password === "string" ? body.password : "";

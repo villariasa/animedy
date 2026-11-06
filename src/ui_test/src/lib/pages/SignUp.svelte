@@ -1,19 +1,25 @@
 <script lang="ts">
   import { auth } from "$lib/stores/auth.svelte";
   import { router } from "$lib/router.svelte";
-  import { passwordProblems, passwordStrength, USERNAME_RE } from "$lib/api/account";
-  import TurnstileWidget from "$lib/components/TurnstileWidget.svelte";
+  import { passwordProblems, passwordStrength, USERNAME_RE, hasValidAuthPass } from "$lib/api/account";
+  import { ApiError } from "$lib/api/client";
 
   let email = $state("");
   let username = $state("");
   let password = $state("");
   let confirm = $state("");
-  let turnstileToken = $state("");
   let submitting = $state(false);
   let errorMessage = $state("");
   let usernameStatus = $state<"idle" | "checking" | "available" | "taken">("idle");
   let checkTimer: ReturnType<typeof setTimeout> | undefined;
-  let turnstileWidget: TurnstileWidget | undefined;
+
+  // Sign-up needs a fresh single-use verification pass, same as sign-in.
+  function goVerify(): void {
+    router.go("/verify?purpose=auth&then=" + encodeURIComponent("/signup"));
+  }
+  $effect(() => {
+    if (!hasValidAuthPass()) goVerify();
+  });
 
   const usernameValid = $derived(USERNAME_RE.test(username));
   const passwordProblem = $derived(password ? passwordProblems(password) : null);
@@ -53,11 +59,14 @@
     submitting = true;
     errorMessage = "";
     try {
-      await auth.register({ email, username, password, turnstile_token: turnstileToken });
+      await auth.register({ email, username, password });
       router.go("/");
     } catch (err) {
+      if (err instanceof ApiError && err.httpCode === 428) {
+        goVerify();
+        return;
+      }
       errorMessage = err instanceof Error ? err.message : "Sign up failed";
-      turnstileWidget?.reset();
     } finally {
       submitting = false;
     }
@@ -144,8 +153,6 @@
           <span class="text-xs text-red-400">Passwords don't match</span>
         {/if}
       </label>
-
-      <TurnstileWidget bind:this={turnstileWidget} bind:token={turnstileToken} />
 
       {#if errorMessage}
         <p class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">

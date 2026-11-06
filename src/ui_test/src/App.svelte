@@ -24,6 +24,8 @@
   import SignIn from "$lib/pages/SignIn.svelte";
   import SignUp from "$lib/pages/SignUp.svelte";
   import ForgotPassword from "$lib/pages/ForgotPassword.svelte";
+  import Seasonal from "$lib/pages/Seasonal.svelte";
+  import type { AnimeSeason } from "$lib/api/types";
   import Admin from "$lib/pages/Admin.svelte";
   import AccountPrompt from "$lib/components/AccountPrompt.svelte";
   import GlobalChat from "$lib/components/GlobalChat.svelte";
@@ -32,6 +34,21 @@
   import { auth } from "$lib/stores/auth.svelte";
   import { presence } from "$lib/sync/presence.svelte";
   import { syncProgress } from "$lib/sync/migrate.svelte";
+  import Verify from "$lib/pages/Verify.svelte";
+  import { hasValidDailyPass } from "$lib/api/account";
+
+  // Daily verification gate (PLAN_VERIFY_GATE.md): one full-page check per
+  // device per 24h, guests included. Offline is exempt — the cached PWA must
+  // always open.
+  $effect(() => {
+    const route = router.current;
+    if (route.name === "verify") return;
+    if (!navigator.onLine) return;
+    if (!hasValidDailyPass()) {
+      const current = location.hash.slice(1) || "/";
+      router.go(`/verify?then=${encodeURIComponent(current)}`);
+    }
+  });
 
   let isSearchActive = $state(false);
   let isMobileMenuOpen = $state(false);
@@ -54,6 +71,14 @@
   }
 </script>
 
+{#if router.current.name === "verify"}
+  <!-- Full-page verification interstitial — replaces the whole app shell -->
+  <div class="dark">
+    {#key `${router.current.purpose}-${router.current.then}`}
+      <Verify purpose={router.current.purpose} then={router.current.then} />
+    {/key}
+  </div>
+{:else}
 <div class="dark flex min-h-dvh flex-col bg-background text-foreground">
   <AmbientBackground />
   <MobileNavDrawer bind:isOpen={isMobileMenuOpen} />
@@ -140,6 +165,18 @@
          into the More menu to keep the bar from feeling cluttered. -->
     <nav class="hidden sm:flex items-center gap-0.5 sm:gap-1 text-sm shrink-0" aria-label="Main">
       <a
+        href="#/seasonal"
+        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'seasonal' ? 'bg-primary/10 text-primary font-medium' : ''}"
+        title="Browse by season"
+        aria-label="Browse by season"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 text-emerald-400 shrink-0">
+          <path fill-rule="evenodd" d="M5.75 2a.75.75 0 0 1 .75.75V4h7V2.75a.75.75 0 0 1 1.5 0V4h.25A2.75 2.75 0 0 1 18 6.75v8.5A2.75 2.75 0 0 1 15.25 18H4.75A2.75 2.75 0 0 1 2 15.25v-8.5A2.75 2.75 0 0 1 4.75 4H5V2.75A.75.75 0 0 1 5.75 2Zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75Z" clip-rule="evenodd" />
+        </svg>
+        <span class="hidden sm:inline">Seasonal</span>
+      </a>
+
+      <a
         href="#/favorites"
         class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent {router.current.name === 'favorites' ? 'bg-primary/10 text-primary font-medium' : ''}"
         title="Liked anime"
@@ -221,6 +258,10 @@
       <SignUp />
     {:else if router.current.name === "forgot"}
       <ForgotPassword />
+    {:else if router.current.name === "seasonal"}
+      {#key `${router.current.season ?? ""}-${router.current.year ?? ""}`}
+        <Seasonal season={router.current.season as AnimeSeason | undefined} year={router.current.year} />
+      {/key}
     {:else if router.current.name === "admin"}
       <Admin />
     {:else}
@@ -259,3 +300,4 @@
   <NewEpisodeNotifier />
   <DiscoveryNotifier />
 </div>
+{/if}
