@@ -261,6 +261,13 @@ class NotificationHistoryStore {
     this.persist();
   }
 
+  /** True if this id is in the bell OR was dismissed/cleared by the user.
+   * Notifiers must dedup against THIS (not just items) — a dismissed entry
+   * leaves `items`, but re-showing it would undo the user's dismissal. */
+  has(id: string): boolean {
+    return this.dismissed.has(id) || this.items.some((e) => e.id === id);
+  }
+
   /** Remove one notification for good (survives the background re-syncs). */
   dismiss(id: string): void {
     this.items = this.items.filter((e) => e.id !== id);
@@ -276,6 +283,15 @@ class NotificationHistoryStore {
 
   markAllRead(): void {
     this.items = this.items.map((e) => (e.read ? e : { ...e, read: true }));
+    this.persist();
+  }
+
+  /** Sign-out wipe: drop ALL entries WITHOUT tombstoning them — public
+   * announcements may legitimately reappear for the next session, but
+   * account-private entries (feedback, sign-ups, welcome) won't re-sync
+   * because their sources require the departed account's token. */
+  clearOnLogout(): void {
+    this.items = [];
     this.persist();
   }
 

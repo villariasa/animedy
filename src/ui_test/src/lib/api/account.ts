@@ -309,6 +309,22 @@ export function apiCheckUsername(username: string): Promise<{ available: boolean
   });
 }
 
+// ---------- account security ----------
+
+export function apiChangeUsername(
+  username: string,
+  password: string
+): Promise<{ user: AuthUser; token: string }> {
+  return request("/api/user/username", { method: "PUT", body: { username, password } });
+}
+
+export function apiChangePassword(currentPassword: string, newPassword: string): Promise<unknown> {
+  return request("/api/user/password", {
+    method: "PUT",
+    body: { current_password: currentPassword, new_password: newPassword },
+  });
+}
+
 // ---------- sync ----------
 
 export function apiFetchAll(): Promise<CloudState> {

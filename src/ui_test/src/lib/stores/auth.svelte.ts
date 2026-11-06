@@ -9,6 +9,8 @@ import {
   apiCheckUsername,
   apiUploadAvatar,
   apiDeleteAvatar,
+  apiChangeUsername,
+  apiChangePassword,
   setSession,
   clearSession,
   loadStoredUser,
@@ -90,6 +92,16 @@ class AuthStore {
 
   checkUsername(username: string): Promise<{ available: boolean }> {
     return apiCheckUsername(username);
+  }
+
+  async changeUsername(username: string, password: string): Promise<void> {
+    const { user, token } = await apiChangeUsername(username, password);
+    setSession(token, user);
+    this.user = user;
+  }
+
+  changePassword(currentPassword: string, newPassword: string): Promise<unknown> {
+    return apiChangePassword(currentPassword, newPassword);
   }
 
   async updateAvatar(file: File): Promise<string> {

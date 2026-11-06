@@ -58,11 +58,10 @@
           cover: r.item.cover_image
         }));
 
-      // Dedup against the notification history log — without this, every
-      // reload recomputes "aired today + unwatched" from scratch and the
-      // toast/notification fires again even though it already surfaced.
-      const seenIds = new Set(notificationHistory.items.map((e) => e.id));
-      const fresh = candidates.filter((n) => !seenIds.has(`episode:${n.anime_id}:${n.episode}`));
+      // Dedup against the notification history INCLUDING dismissed ids —
+      // checking items alone re-fires the toast after the user dismisses the
+      // bell entry (e.g. liking another anime re-runs this check).
+      const fresh = candidates.filter((n) => !notificationHistory.has(`episode:${n.anime_id}:${n.episode}`));
 
       if (fresh.length > 0) {
         notices = fresh;

@@ -29,6 +29,7 @@ import {
   type WatchStatusEntry
 } from "$lib/stores/watchStatus.svelte";
 import { settings, toCloudSettings } from "$lib/stores/settings.svelte";
+import { notificationHistory } from "$lib/stores/notificationHistory.svelte";
 
 const MIGRATED_KEY_PREFIX = "animedy.migrated.";
 
@@ -227,4 +228,7 @@ export function clearLocalAccountData(): void {
   likes.clearAll();
   customLists.clearAll();
   watchStatusStore.clearAll();
+  // The bell can hold account-private entries (admin feedback/sign-ups, the
+  // personal welcome) — they must not survive into a guest session.
+  notificationHistory.clearOnLogout();
 }

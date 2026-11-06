@@ -5,6 +5,7 @@
   import { settings, DEFAULT_SETTINGS } from "$lib/stores/settings.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { pushSupported, currentPushSubscription, enablePush, disablePush } from "$lib/push";
+  import { USERNAME_RE, passwordProblems, passwordStrength } from "$lib/api/account";
   import { buildBackup, downloadBackup, restoreBackup, BackupParseError } from "$lib/backup";
   import {
     notificationsSupported,
@@ -35,6 +36,85 @@
       avatarStatus = { type: "error", message: err instanceof Error ? err.message : "Upload failed" };
     } finally {
       avatarBusy = false;
+    }
+  }
+
+  // Account security: change username / change password
+  let securityForm = $state<"none" | "username" | "password">("none");
+  let secBusy = $state(false);
+  let secStatus = $state<{ type: "success" | "error"; message: string } | null>(null);
+
+  let newUsername = $state("");
+  let usernamePassword = $state("");
+  let usernameAvail = $state<"idle" | "checking" | "available" | "taken">("idle");
+  let usernameCheckTimer: ReturnType<typeof setTimeout> | undefined;
+  const newUsernameValid = $derived(USERNAME_RE.test(newUsername));
+
+  let curPassword = $state("");
+  let newPassword = $state("");
+  let confirmPassword = $state("");
+  const newPasswordProblem = $derived(newPassword ? passwordProblems(newPassword) : null);
+  const newPasswordStrength = $derived(passwordStrength(newPassword));
+  const passwordMismatch = $derived(confirmPassword.length > 0 && confirmPassword !== newPassword);
+
+  const SEC_STRENGTH_LABELS = ["", "Weak", "Okay", "Good", "Strong"];
+  const SEC_STRENGTH_COLORS = ["", "bg-red-500", "bg-amber-500", "bg-lime-500", "bg-emerald-500"];
+
+  function openSecurityForm(form: "username" | "password"): void {
+    securityForm = securityForm === form ? "none" : form;
+    secStatus = null;
+  }
+
+  function onNewUsernameInput(): void {
+    usernameAvail = "idle";
+    clearTimeout(usernameCheckTimer);
+    if (!newUsernameValid || newUsername === auth.user?.username) return;
+    usernameAvail = "checking";
+    usernameCheckTimer = setTimeout(async () => {
+      try {
+        const { available } = await auth.checkUsername(newUsername);
+        usernameAvail = available ? "available" : "taken";
+      } catch {
+        usernameAvail = "idle";
+      }
+    }, 400);
+  }
+
+  async function submitUsernameChange(e: SubmitEvent): Promise<void> {
+    e.preventDefault();
+    if (secBusy || !newUsernameValid || usernameAvail === "taken" || !usernamePassword) return;
+    secBusy = true;
+    secStatus = null;
+    try {
+      await auth.changeUsername(newUsername.trim(), usernamePassword);
+      secStatus = { type: "success", message: `Username changed to ${newUsername.trim()}` };
+      newUsername = "";
+      usernamePassword = "";
+      usernameAvail = "idle";
+      securityForm = "none";
+    } catch (err) {
+      secStatus = { type: "error", message: err instanceof Error ? err.message : "Change failed" };
+    } finally {
+      secBusy = false;
+    }
+  }
+
+  async function submitPasswordChange(e: SubmitEvent): Promise<void> {
+    e.preventDefault();
+    if (secBusy || !curPassword || !newPassword || newPasswordProblem || confirmPassword !== newPassword) return;
+    secBusy = true;
+    secStatus = null;
+    try {
+      await auth.changePassword(curPassword, newPassword);
+      secStatus = { type: "success", message: "Password changed" };
+      curPassword = "";
+      newPassword = "";
+      confirmPassword = "";
+      securityForm = "none";
+    } catch (err) {
+      secStatus = { type: "error", message: err instanceof Error ? err.message : "Change failed" };
+    } finally {
+      secBusy = false;
     }
   }
 
@@ -257,6 +337,131 @@
           bind:this={avatarFileInput}
           onchange={(e) => void onAvatarPicked(e)}
         />
+      </div>
+
+      <!-- Account security: change username / password -->
+      <div class="mt-4 border-t border-border/60 pt-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onclick={() => openSecurityForm("username")}
+            class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors {securityForm === 'username' ? 'border-primary text-primary' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          >
+            Change username
+          </button>
+          <button
+            type="button"
+            onclick={() => openSecurityForm("password")}
+            class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors {securityForm === 'password' ? 'border-primary text-primary' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          >
+            Change password
+          </button>
+          {#if secStatus}
+            <span class="text-xs {secStatus.type === 'error' ? 'text-red-400' : 'text-emerald-400'}">{secStatus.message}</span>
+          {/if}
+        </div>
+
+        {#if securityForm === "username"}
+          <form class="mt-3 flex max-w-sm flex-col gap-2.5" onsubmit={submitUsernameChange}>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-xs text-muted-foreground">New username</span>
+              <input
+                type="text"
+                bind:value={newUsername}
+                oninput={onNewUsernameInput}
+                required
+                autocomplete="username"
+                class="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary {usernameAvail === 'taken' ? 'border-red-500' : 'border-border'}"
+                placeholder="3-20 letters, numbers, underscore"
+              />
+              {#if newUsername && !newUsernameValid}
+                <span class="text-xs text-red-400">3–20 characters: letters, numbers, underscore only</span>
+              {:else if newUsername === auth.user?.username && newUsername}
+                <span class="text-xs text-amber-400">That's already your username</span>
+              {:else if usernameAvail === "checking"}
+                <span class="text-xs text-muted-foreground">Checking availability…</span>
+              {:else if usernameAvail === "available"}
+                <span class="text-xs text-emerald-400">Username is available</span>
+              {:else if usernameAvail === "taken"}
+                <span class="text-xs text-red-400">Username is already taken</span>
+              {/if}
+            </label>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-xs text-muted-foreground">Current password (to confirm it's you)</span>
+              <input
+                type="password"
+                bind:value={usernamePassword}
+                required
+                autocomplete="current-password"
+                class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={secBusy || !newUsernameValid || usernameAvail === "taken" || newUsername === auth.user?.username || !usernamePassword}
+              class="self-start rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+            >
+              {secBusy ? "Saving…" : "Save username"}
+            </button>
+          </form>
+        {:else if securityForm === "password"}
+          <form class="mt-3 flex max-w-sm flex-col gap-2.5" onsubmit={submitPasswordChange}>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-xs text-muted-foreground">Current password</span>
+              <input
+                type="password"
+                bind:value={curPassword}
+                required
+                autocomplete="current-password"
+                class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-xs text-muted-foreground">New password</span>
+              <input
+                type="password"
+                bind:value={newPassword}
+                required
+                autocomplete="new-password"
+                class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                placeholder="10+ chars with upper, lower, digit, symbol"
+              />
+              {#if newPassword}
+                <div class="mt-1 flex items-center gap-2">
+                  <div class="flex h-1.5 flex-1 gap-1 overflow-hidden rounded-full">
+                    {#each [1, 2, 3, 4] as step (step)}
+                      <div class="h-full flex-1 rounded-full {newPasswordStrength >= step ? SEC_STRENGTH_COLORS[newPasswordStrength] : 'bg-border'}"></div>
+                    {/each}
+                  </div>
+                  <span class="w-14 text-right text-xs text-muted-foreground">{SEC_STRENGTH_LABELS[newPasswordStrength]}</span>
+                </div>
+                {#if newPasswordProblem}
+                  <span class="text-xs text-amber-400">{newPasswordProblem}</span>
+                {/if}
+              {/if}
+            </label>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-xs text-muted-foreground">Confirm new password</span>
+              <input
+                type="password"
+                bind:value={confirmPassword}
+                required
+                autocomplete="new-password"
+                class="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary {passwordMismatch ? 'border-red-500' : 'border-border'}"
+              />
+              {#if passwordMismatch}
+                <span class="text-xs text-red-400">Passwords don't match</span>
+              {/if}
+            </label>
+            <button
+              type="submit"
+              disabled={secBusy || !curPassword || !newPassword || !!newPasswordProblem || confirmPassword !== newPassword}
+              class="self-start rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+            >
+              {secBusy ? "Saving…" : "Save password"}
+            </button>
+          </form>
+        {/if}
       </div>
 
       {#if pushSupported()}
