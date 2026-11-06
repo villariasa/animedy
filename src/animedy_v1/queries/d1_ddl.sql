@@ -381,3 +381,12 @@ CREATE TABLE IF NOT EXISTS watch_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_watch_history_user_time ON watch_history (user_id, last_watched_at);
+
+-- ============================================================
+-- 22. verify_nonces (PLAN_VERIFY_GATE.md — single-use auth
+--     verification passes; rows self-prune after ~15 min)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS verify_nonces (
+  nonce TEXT PRIMARY KEY,
+  used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
