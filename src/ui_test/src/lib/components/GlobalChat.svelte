@@ -3,6 +3,7 @@
   // desktop / bottom sheet on mobile. Read is public; sending needs an
   // account. Admins get delete + mute controls inline.
   import { fly } from "svelte/transition";
+  import Icon from "$lib/components/Icon.svelte";
   import { chat } from "$lib/stores/chat.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { router } from "$lib/router.svelte";
@@ -146,7 +147,7 @@
                     type="button"
                     onclick={() => void chat.remove(msg.id)}
                     class="rounded px-1 text-[10px] text-muted-foreground hover:text-red-400"
-                    title="Delete message">✕</button>
+                    title="Delete message"><Icon name="x-mark" class="h-3.5 w-3.5" /></button>
                   {#if msg.is_muted}
                     <button
                       type="button"
@@ -158,7 +159,7 @@
                       type="button"
                       onclick={() => void muteUser(msg.user_id, msg.username)}
                       class="rounded px-1 text-[10px] text-muted-foreground hover:text-amber-400"
-                      title="Mute user 24h">🔇</button>
+                      title="Mute user 24h"><Icon name="speaker-x" class="h-3.5 w-3.5" /></button>
                   {/if}
                 </div>
               {/if}

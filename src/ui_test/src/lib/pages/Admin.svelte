@@ -2,12 +2,16 @@
   // Admin dashboard — live sessions (guests + accounts) and per-user stats.
   // Gated on role=admin client-side; the API enforces it server-side too.
   import { auth } from "$lib/stores/auth.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import {
     apiAdminActivity,
     apiAdminUsers,
     apiAdminResetRequests,
     apiAdminResolveReset,
     apiAnnounce,
+    apiAnnouncements,
+    apiDeleteAnnouncement,
+    type Announcement,
     apiAdminFeedback,
     apiAdminDeleteFeedback,
     apiPushStatus,
@@ -117,11 +121,18 @@
     }
   }
 
-  // Announcement composer
+  // Announcement composer + recent list (admin can delete)
   let annTitle = $state("");
   let annBody = $state("");
   let annBusy = $state(false);
   let annNote = $state("");
+  let announcements = $state<Announcement[]>([]);
+
+  async function loadAnnouncements(): Promise<void> {
+    announcements = await apiAnnouncements()
+      .then((r) => r.announcements)
+      .catch(() => []);
+  }
 
   async function sendAnnouncement(e: SubmitEvent): Promise<void> {
     e.preventDefault();
@@ -134,11 +145,17 @@
       annNote = "Announcement posted and added to the notification bell!";
       annTitle = "";
       annBody = "";
+      void loadAnnouncements();
     } catch (err) {
       annNote = err instanceof Error ? err.message : "Failed to send";
     } finally {
       annBusy = false;
     }
+  }
+
+  async function deleteAnnouncement(id: number): Promise<void> {
+    announcements = announcements.filter((a) => a.id !== id);
+    await apiDeleteAnnouncement(id).catch(() => undefined);
   }
 
   async function resolveReset(id: number, action: "approve" | "deny"): Promise<void> {
@@ -180,6 +197,7 @@
   $effect(() => {
     if (!auth.isAdmin) return;
     void refresh();
+    void loadAnnouncements();
     const timer = setInterval(() => void refresh(), 30_000);
     return () => clearInterval(timer);
   });
@@ -223,7 +241,7 @@
             class="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 {pushEnabled ? 'border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10' : 'border-border text-muted-foreground hover:bg-accent'}"
             title="Push alerts for reset requests — works even when the app is closed"
           >
-            {pushBusy ? "…" : pushEnabled ? "🔔 Alerts on" : "🔕 Enable alerts"}
+            {#if pushBusy}…{:else if pushEnabled}<span class="inline-flex items-center gap-1.5"><Icon name="bell" class="h-3.5 w-3.5" /> Alerts on</span>{:else}<span class="inline-flex items-center gap-1.5"><Icon name="bell-slash" class="h-3.5 w-3.5" /> Enable alerts</span>{/if}
           </button>
         {/if}
         <button
@@ -243,9 +261,7 @@
     {#if pushStatus}
       <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card/60 px-4 py-2.5 text-xs">
         <span class={pushStatus.vapid_configured ? "text-emerald-400" : "text-red-400 font-semibold"}>
-          {pushStatus.vapid_configured
-            ? "✓ Push keys configured"
-            : "✗ VAPID keys NOT set — no push can be delivered until VAPID_PRIVATE_JWK + VAPID_PUBLIC_KEY are set in the Pages env"}
+          {#if pushStatus.vapid_configured}<span class="inline-flex items-center gap-1"><Icon name="check" class="h-3.5 w-3.5" /> Push keys configured</span>{:else}<span class="inline-flex items-center gap-1"><Icon name="x-mark" class="h-3.5 w-3.5" /> VAPID keys NOT set — no push can be delivered until VAPID_PRIVATE_JWK + VAPID_PUBLIC_KEY are set in the Pages env</span>{/if}
         </span>
         <span class="text-muted-foreground">
           Subscribed devices: <span class="font-semibold text-foreground">{pushStatus.subscriptions_total}</span>
@@ -283,7 +299,7 @@
 
     <!-- Announcement composer -->
     <section class="mt-4 rounded-xl border border-border bg-card/80 p-4">
-      <h2 class="text-sm font-medium">📢 Send announcement</h2>
+      <h2 class="flex items-center gap-1.5 text-sm font-medium"><Icon name="megaphone" class="h-4 w-4 text-primary" /> Send announcement</h2>
       <p class="mt-0.5 text-xs text-muted-foreground">
         Pushed as an OS notification to every device that enabled notifications — even with the app closed.
       </p>
@@ -317,6 +333,30 @@
           </button>
         </div>
       </form>
+
+      <!-- Recent announcements with delete -->
+      {#if announcements.length > 0}
+        <ul class="mt-3 divide-y divide-border/50 border-t border-border/60 pt-1">
+          {#each announcements as a (a.id)}
+            <li class="group flex items-start gap-3 py-2">
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium">{a.title}</p>
+                <p class="truncate text-xs text-muted-foreground">{a.body}</p>
+                <p class="mt-0.5 text-[10px] text-muted-foreground/70">{relTime(a.created_at)}</p>
+              </div>
+              <button
+                type="button"
+                onclick={() => void deleteAnnouncement(a.id)}
+                class="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
+                title="Delete announcement"
+                aria-label="Delete announcement"
+              >
+                <Icon name="x-mark" class="h-3.5 w-3.5" />
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </section>
 
     <!-- Summary tiles -->
@@ -494,7 +534,7 @@
                 class="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
                 title="Delete feedback"
               >
-                ✕
+                <Icon name="x-mark" class="h-3.5 w-3.5" />
               </button>
             </li>
           {/each}
@@ -549,7 +589,7 @@
                       class="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400"
                       title={u.mute_reason ? `Reason: ${u.mute_reason}` : "Muted"}
                     >
-                      🔇 Muted
+                      <Icon name="speaker-x" class="h-3 w-3" /> Muted
                     </span>
                   {:else}
                     <span class="text-xs text-muted-foreground">Active</span>

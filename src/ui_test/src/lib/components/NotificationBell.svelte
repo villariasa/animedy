@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import { notificationHistory, type NotificationEntry } from "$lib/stores/notificationHistory.svelte";
   import { router } from "$lib/router.svelte";
 
@@ -106,7 +107,7 @@
       <div class="max-h-[26rem] overflow-y-auto divide-y divide-border/40">
         {#if notificationHistory.items.length === 0}
           <div class="flex flex-col items-center justify-center px-4 py-10 text-center">
-            <span class="text-2xl mb-2">🔔</span>
+            <Icon name="bell" class="mb-2 h-7 w-7 text-muted-foreground/60" />
             <p class="text-xs font-medium text-muted-foreground">
               No notifications yet — site announcements, alerts, and episode updates will show up here.
             </p>
@@ -124,13 +125,13 @@
                 {#if n.cover}
                   <img src={n.cover} alt="" class="h-full w-full object-cover" />
                 {:else if n.type === "announcement"}
-                  <span class="text-lg">📢</span>
+                  <Icon name="megaphone" class="h-5 w-5 text-primary" />
                 {:else if n.type === "feedback"}
-                  <span class="text-lg">💬</span>
+                  <Icon name="chat" class="h-5 w-5 text-emerald-400" />
                 {:else if n.type === "system"}
-                  <span class="text-lg">⚡</span>
+                  <Icon name="bolt" class="h-5 w-5 text-sky-400" />
                 {:else}
-                  <span class="text-lg">🔔</span>
+                  <Icon name="bell" class="h-5 w-5 text-amber-400" />
                 {/if}
               </div>
               <div class="min-w-0 flex-1">
@@ -158,7 +159,7 @@
               title="Dismiss notification"
               aria-label="Dismiss notification"
             >
-              ✕
+              <Icon name="x-mark" class="h-3.5 w-3.5" />
             </button>
             </div>
           {/each}

@@ -592,6 +592,21 @@ export function apiAnnounce(title: string, body: string): Promise<{ id: number; 
   return request("/api/admin/announce", { method: "POST", body: { title, body } });
 }
 
+export interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  created_at: string;
+}
+
+export function apiAnnouncements(): Promise<{ announcements: Announcement[] }> {
+  return request("/api/announcements", { auth: false });
+}
+
+export function apiDeleteAnnouncement(id: number): Promise<unknown> {
+  return request(`/api/admin/announce/${id}`, { method: "DELETE" });
+}
+
 // ---------- global chat ----------
 
 export interface ChatMessage {

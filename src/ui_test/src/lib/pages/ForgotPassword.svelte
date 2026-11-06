@@ -5,6 +5,7 @@
   // (a secret stored in localStorage is checked server-side), so come back
   // to this page in the SAME browser after the admin approves.
   import { router } from "$lib/router.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import {
     apiForgotRequest,
     apiForgotStatus,
@@ -148,7 +149,7 @@
       <div class="mt-6 flex flex-col items-center gap-4 py-6 text-center">
         <span class="relative flex h-10 w-10">
           <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40"></span>
-          <span class="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary">⏳</span>
+          <span class="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary"><Icon name="clock" class="h-5 w-5" /></span>
         </span>
         <p class="text-sm text-muted-foreground">{statusNote}</p>
         <p class="text-xs text-muted-foreground">This page checks automatically every 10 seconds.</p>
@@ -215,7 +216,7 @@
 
     {:else}
       <div class="mt-6 flex flex-col items-center gap-4 py-6 text-center">
-        <span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">✓</span>
+        <span class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400"><Icon name="check-circle" class="h-5 w-5" /></span>
         <p class="text-sm">Password changed — you can sign in now.</p>
         <button
           type="button"

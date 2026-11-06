@@ -13,11 +13,11 @@
   let { season: initialSeason, year: initialYear }: { season?: AnimeSeason; year?: number } = $props();
 
   const now = currentSeason();
-  const SEASONS: Array<{ value: AnimeSeason; label: string; emoji: string }> = [
-    { value: "WINTER", label: "Winter", emoji: "❄️" },
-    { value: "SPRING", label: "Spring", emoji: "🌸" },
-    { value: "SUMMER", label: "Summer", emoji: "☀️" },
-    { value: "FALL", label: "Fall", emoji: "🍂" }
+  const SEASONS: Array<{ value: AnimeSeason; label: string }> = [
+    { value: "WINTER", label: "Winter" },
+    { value: "SPRING", label: "Spring" },
+    { value: "SUMMER", label: "Summer" },
+    { value: "FALL", label: "Fall" }
   ];
   const YEARS = Array.from({ length: now.year + 2 - 1980 }, (_, i) => now.year + 1 - i);
 
@@ -102,7 +102,6 @@
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-extrabold tracking-tight">
-        {SEASONS.find((s) => s.value === season)?.emoji}
         {seasonLabel(season)} {year}
         {#if isCurrent}
           <span class="ml-1.5 align-middle rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">Airing now</span>
@@ -133,7 +132,6 @@
           onclick={() => select(s.value, year)}
           class="px-3.5 py-2 text-sm font-medium transition-colors {season === s.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}"
         >
-          <span class="hidden sm:inline">{s.emoji}</span>
           {s.label}
         </button>
       {/each}

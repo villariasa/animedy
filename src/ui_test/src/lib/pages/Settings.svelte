@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button";
+  import Icon from "$lib/components/Icon.svelte";
   import HoverSelect from "$lib/components/HoverSelect.svelte";
   import { settings, DEFAULT_SETTINGS } from "$lib/stores/settings.svelte";
   import { auth } from "$lib/stores/auth.svelte";
@@ -272,7 +273,7 @@
             onclick={() => void toggleAccountPush()}
             class="shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 {accPushEnabled ? 'border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10' : 'border-border text-muted-foreground hover:bg-accent'}"
           >
-            {accPushBusy ? "…" : accPushEnabled ? "🔔 On" : "🔕 Enable"}
+            {#if accPushBusy}…{:else if accPushEnabled}<span class="inline-flex items-center gap-1"><Icon name="bell" class="h-3 w-3" /> On</span>{:else}<span class="inline-flex items-center gap-1"><Icon name="bell-slash" class="h-3 w-3" /> Enable</span>{/if}
           </button>
         </div>
       {/if}

@@ -2,6 +2,7 @@
   // Feedback modal — open to everyone (guests post under a sticky random
   // nickname). Messages land in the admin-only inbox on #/admin.
   import { fade, fly } from "svelte/transition";
+  import Icon from "$lib/components/Icon.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { apiSendFeedback, getGuestNickname } from "$lib/api/account";
   import { notificationHistory } from "$lib/stores/notificationHistory.svelte";
@@ -27,7 +28,7 @@
     try {
       await apiSendFeedback(body.trim());
       void notificationHistory.syncAdminFeedback();
-      note = { type: "success", message: "Sent — thank you! 💜" };
+      note = { type: "success", message: "Sent — thank you!" };
       body = "";
       setTimeout(() => close(), 1500);
     } catch (err) {
@@ -58,14 +59,14 @@
     aria-label="Send feedback"
   >
     <div class="flex items-center justify-between">
-      <h2 class="text-base font-semibold">💬 Send feedback</h2>
+      <h2 class="flex items-center gap-2 text-base font-semibold"><Icon name="chat" class="h-4 w-4 text-primary" /> Send feedback</h2>
       <button
         type="button"
         onclick={close}
         class="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         aria-label="Close"
       >
-        ✕
+        <Icon name="x-mark" class="h-4 w-4" />
       </button>
     </div>
     <p class="mt-1 text-xs text-muted-foreground">

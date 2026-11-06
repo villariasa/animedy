@@ -77,6 +77,25 @@ class NotificationHistoryStore {
       if (!Array.isArray(list)) return;
 
       let changed = false;
+
+      // Admin-deleted announcements get pulled back out of the bell: any
+      // local announcement entry missing from the server feed is removed.
+      // Guard: only entries NEWER than the oldest row the feed returned —
+      // the feed is capped at 50, so genuinely old entries falling off the
+      // end must not be mistaken for deletions.
+      const serverIds = new Set(list.map((a) => `announcement:${a.id}`));
+      const oldest = list.length > 0 ? Math.min(...list.map((a) => a.id)) : 0;
+      const pruned = this.items.filter(
+        (e) =>
+          e.type !== "announcement" ||
+          serverIds.has(e.id) ||
+          Number(e.id.split(":")[1]) < oldest
+      );
+      if (pruned.length !== this.items.length) {
+        this.items = pruned;
+        changed = true;
+      }
+
       for (const a of list) {
         const id = `announcement:${a.id}`;
         if (!this.dismissed.has(id) && !this.items.some((e) => e.id === id)) {
@@ -151,8 +170,66 @@ class NotificationHistoryStore {
     }
   }
 
+  /** For admin users: surface fresh sign-ups (last 48h) in the bell. */
+  async syncAdminSignups(): Promise<void> {
+    const user = loadStoredUser();
+    if (!user || user.role !== "admin") return;
+    const token = getToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/admin/users", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as {
+        data?: { users?: Array<{ id: number; username: string; created_at: string }> };
+      };
+      const list = json?.data?.users;
+      if (!Array.isArray(list)) return;
+
+      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      let changed = false;
+      for (const u of list) {
+        if (u.id === user.id) continue; // not your own signup
+        const createdMs = Date.parse(
+          u.created_at.includes("T") ? u.created_at : u.created_at.replace(" ", "T") + "Z"
+        );
+        if (Number.isNaN(createdMs) || createdMs < cutoff) continue;
+        const id = `signup:${u.id}`;
+        if (!this.dismissed.has(id) && !this.items.some((e) => e.id === id)) {
+          this.items = [
+            {
+              id,
+              type: "system" as const,
+              anime_id: null,
+              url: "#/admin",
+              title: "New user signed up",
+              message: `${u.username} just joined Animedy.`,
+              cover: null,
+              created_at: u.created_at,
+              read: false,
+            },
+            ...this.items,
+          ].slice(0, MAX_ENTRIES);
+          changed = true;
+        }
+      }
+      if (changed) {
+        this.persist();
+      }
+    } catch {
+      // ignore network errors
+    }
+  }
+
   async syncAll(): Promise<void> {
-    await Promise.allSettled([this.syncAnnouncements(), this.syncAdminFeedback()]);
+    await Promise.allSettled([
+      this.syncAnnouncements(),
+      this.syncAdminFeedback(),
+      this.syncAdminSignups(),
+    ]);
   }
 
   /** Start background polling so announcements and feedback pop into the bell automatically. */
