@@ -127,6 +127,17 @@
   let annBusy = $state(false);
   let annNote = $state("");
   let announcements = $state<Announcement[]>([]);
+  let expandedAnnounceIds = $state<Set<number>>(new Set());
+
+  function toggleAnnounceExpand(id: number): void {
+    const next = new Set(expandedAnnounceIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    expandedAnnounceIds = next;
+  }
 
   async function loadAnnouncements(): Promise<void> {
     announcements = await apiAnnouncements()
@@ -336,26 +347,54 @@
 
       <!-- Recent announcements with delete -->
       {#if announcements.length > 0}
-        <ul class="mt-3 divide-y divide-border/50 border-t border-border/60 pt-1">
-          {#each announcements as a (a.id)}
-            <li class="group flex items-start gap-3 py-2">
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium">{a.title}</p>
-                <p class="truncate text-xs text-muted-foreground">{a.body}</p>
-                <p class="mt-0.5 text-[10px] text-muted-foreground/70">{relTime(a.created_at)}</p>
-              </div>
-              <button
-                type="button"
-                onclick={() => void deleteAnnouncement(a.id)}
-                class="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
-                title="Delete announcement"
-                aria-label="Delete announcement"
-              >
-                <Icon name="x-mark" class="h-3.5 w-3.5" />
-              </button>
-            </li>
-          {/each}
-        </ul>
+        <div class="mt-3 max-h-[320px] overflow-y-auto">
+          <ul class="divide-y divide-border/50 border-t border-border/60 pt-1">
+            {#each announcements as a (a.id)}
+              <li class="group flex items-start gap-3 py-2.5">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-sm font-semibold text-foreground">{a.title}</p>
+                    <span class="shrink-0 text-[10px] text-muted-foreground/70">{relTime(a.created_at)}</span>
+                  </div>
+                  {#if expandedAnnounceIds.has(a.id)}
+                    <p class="mt-1.5 whitespace-pre-wrap break-words rounded-xl border border-border/70 bg-background/80 p-2.5 text-xs text-foreground/95 leading-relaxed shadow-xs">
+                      {a.body}
+                    </p>
+                    <button
+                      type="button"
+                      onclick={() => toggleAnnounceExpand(a.id)}
+                      class="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                    >
+                      Show less ▲
+                    </button>
+                  {:else}
+                    <p class="mt-0.5 break-words line-clamp-1 text-xs text-muted-foreground">
+                      {a.body}
+                    </p>
+                    {#if a.body.length > 60 || a.body.includes("\n")}
+                      <button
+                        type="button"
+                        onclick={() => toggleAnnounceExpand(a.id)}
+                        class="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                      >
+                        Read full announcement ▼
+                      </button>
+                    {/if}
+                  {/if}
+                </div>
+                <button
+                  type="button"
+                  onclick={() => void deleteAnnouncement(a.id)}
+                  class="shrink-0 rounded-md p-1.5 text-xs text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-400 group-hover:opacity-100 cursor-pointer"
+                  title="Delete announcement"
+                  aria-label="Delete announcement"
+                >
+                  <Icon name="x-mark" class="h-3.5 w-3.5" />
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
       {/if}
     </section>
 
@@ -376,10 +415,15 @@
     </div>
 
     <!-- Live sessions -->
-    <h2 class="mt-8 text-sm font-medium text-muted-foreground">Sessions (guests included)</h2>
-    <div class="mt-2 overflow-x-auto rounded-xl border border-border">
+    <h2 class="mt-8 flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+      Sessions (guests included)
+      {#if sessions.length > 0}
+        <span class="rounded-full bg-accent/60 px-2 py-0.5 text-[10px] font-bold text-foreground">{sessions.length}</span>
+      {/if}
+    </h2>
+    <div class="mt-2 max-h-[380px] overflow-auto rounded-xl border border-border">
       <table class="w-full min-w-[640px] text-sm">
-        <thead class="bg-card/80 text-left text-xs text-muted-foreground">
+        <thead class="sticky top-0 z-10 bg-card/95 backdrop-blur-md text-left text-xs text-muted-foreground shadow-xs">
           <tr>
             <th class="px-3 py-2">Who</th>
             <th class="px-3 py-2">Status</th>
@@ -444,9 +488,9 @@
           </span>
         {/if}
       </h2>
-      <div class="mt-2 overflow-x-auto rounded-xl border border-border">
+      <div class="mt-2 max-h-[320px] overflow-auto rounded-xl border border-border">
         <table class="w-full min-w-[560px] text-sm">
-          <thead class="bg-card/80 text-left text-xs text-muted-foreground">
+          <thead class="sticky top-0 z-10 bg-card/95 backdrop-blur-md text-left text-xs text-muted-foreground shadow-xs">
             <tr>
               <th class="px-3 py-2">User</th>
               <th class="px-3 py-2">Requested</th>
@@ -511,7 +555,7 @@
         <span class="ml-1.5 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary">{feedbackItems.length}</span>
       {/if}
     </h2>
-    <div class="mt-2 rounded-xl border border-border">
+    <div class="mt-2 max-h-[360px] overflow-y-auto rounded-xl border border-border">
       {#if feedbackItems.length === 0}
         <p class="px-4 py-6 text-center text-sm text-muted-foreground">No feedback yet</p>
       {:else}
@@ -543,10 +587,15 @@
     </div>
 
     <!-- Registered users -->
-    <h2 class="mt-8 text-sm font-medium text-muted-foreground">Registered users</h2>
-    <div class="mt-2 overflow-x-auto rounded-xl border border-border">
+    <h2 class="mt-8 flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+      Registered users
+      {#if users.length > 0}
+        <span class="rounded-full bg-accent/60 px-2 py-0.5 text-[10px] font-bold text-foreground">{users.length}</span>
+      {/if}
+    </h2>
+    <div class="mt-2 max-h-[420px] overflow-auto rounded-xl border border-border">
       <table class="w-full min-w-[720px] text-sm">
-        <thead class="bg-card/80 text-left text-xs text-muted-foreground">
+        <thead class="sticky top-0 z-10 bg-card/95 backdrop-blur-md text-left text-xs text-muted-foreground shadow-xs">
           <tr>
             <th class="px-3 py-2">User</th>
             <th class="px-3 py-2">Role</th>

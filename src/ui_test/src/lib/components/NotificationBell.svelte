@@ -6,6 +6,7 @@
 
   let open = $state(false);
   let container: HTMLDivElement | undefined;
+  let expandedIds = $state<Set<string>>(new Set());
 
   onMount(() => {
     notificationHistory.startSync();
@@ -15,13 +16,29 @@
     open = !open;
   }
 
+  function toggleExpand(id: string, e?: MouseEvent): void {
+    if (e) e.stopPropagation();
+    notificationHistory.markRead(id);
+    const next = new Set(expandedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    expandedIds = next;
+  }
+
   function openNotification(n: NotificationEntry): void {
     notificationHistory.markRead(n.id);
-    open = false;
     if (n.anime_id) {
+      open = false;
       router.go(`/anime/${n.anime_id}`);
     } else if (n.url) {
+      open = false;
       router.go(n.url);
+    } else {
+      // For announcements or notifications without a link, toggle inline read
+      toggleExpand(n.id);
     }
   }
 
@@ -72,7 +89,7 @@
   {#if open}
     <div
       role="menu"
-      class="absolute right-0 top-full z-50 mt-2 w-84 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-border/80 bg-popover text-popover-foreground shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150"
+      class="absolute right-0 top-full z-50 mt-2 w-84 max-w-[calc(100vw-1.5rem)] sm:w-96 overflow-hidden rounded-2xl border border-border/80 bg-popover text-popover-foreground shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150"
     >
       <div class="flex items-center justify-between border-b border-border/70 px-4 py-3">
         <div class="flex items-center gap-2">
@@ -87,14 +104,14 @@
           <div class="flex items-center gap-3">
             <button
               type="button"
-              class="text-xs font-semibold text-primary transition-opacity hover:opacity-80"
+              class="text-xs font-semibold text-primary transition-opacity hover:opacity-80 cursor-pointer"
               onclick={() => notificationHistory.markAllRead()}
             >
               Mark all read
             </button>
             <button
               type="button"
-              class="text-xs font-semibold text-muted-foreground transition-colors hover:text-red-400"
+              class="text-xs font-semibold text-muted-foreground transition-colors hover:text-red-400 cursor-pointer"
               onclick={() => notificationHistory.clear()}
               title="Clear all notifications"
             >
@@ -104,7 +121,7 @@
         {/if}
       </div>
 
-      <div class="max-h-[26rem] overflow-y-auto divide-y divide-border/40">
+      <div class="max-h-[28rem] overflow-y-auto divide-y divide-border/40">
         {#if notificationHistory.items.length === 0}
           <div class="flex flex-col items-center justify-center px-4 py-10 text-center">
             <Icon name="bell" class="mb-2 h-7 w-7 text-muted-foreground/60" />
@@ -115,52 +132,92 @@
         {:else}
           {#each notificationHistory.items as n (n.id)}
             <div class="group relative">
-            <button
-              type="button"
-              role="menuitem"
-              onclick={() => openNotification(n)}
-              class="flex w-full items-start gap-3 p-3.5 pr-8 text-left transition-colors hover:bg-accent/70 {n.read ? 'opacity-65' : 'bg-primary/5'}"
-            >
-              <div class="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-card shadow-xs">
-                {#if n.cover}
-                  <img src={n.cover} alt="" class="h-full w-full object-cover" />
-                {:else if n.type === "announcement"}
-                  <Icon name="megaphone" class="h-5 w-5 text-primary" />
-                {:else if n.type === "feedback"}
-                  <Icon name="chat" class="h-5 w-5 text-emerald-400" />
-                {:else if n.type === "system"}
-                  <Icon name="bolt" class="h-5 w-5 text-sky-400" />
-                {:else}
-                  <Icon name="bell" class="h-5 w-5 text-amber-400" />
-                {/if}
-              </div>
-              <div class="min-w-0 flex-1">
-                <p class="flex items-center gap-1.5 truncate text-[10px] font-bold uppercase tracking-wider">
-                  {#if !n.read}
-                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-ping"></span>
+              <div
+                class="flex w-full items-start gap-3 p-3.5 pr-8 text-left transition-colors hover:bg-accent/70 {n.read ? 'opacity-75' : 'bg-primary/5'}"
+              >
+                <!-- Thumbnail / Icon -->
+                <button
+                  type="button"
+                  class="relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-card shadow-xs transition-transform hover:scale-105 active:scale-95"
+                  onclick={() => openNotification(n)}
+                  aria-label={n.title}
+                >
+                  {#if n.cover}
+                    <img src={n.cover} alt="" class="h-full w-full object-cover" />
+                  {:else if n.type === "announcement"}
+                    <Icon name="megaphone" class="h-5 w-5 text-primary" />
+                  {:else if n.type === "feedback"}
+                    <Icon name="chat" class="h-5 w-5 text-emerald-400" />
+                  {:else if n.type === "system"}
+                    <Icon name="bolt" class="h-5 w-5 text-sky-400" />
+                  {:else}
+                    <Icon name="bell" class="h-5 w-5 text-amber-400" />
                   {/if}
-                  <span class={n.type === 'announcement' ? 'text-primary' : n.type === 'feedback' ? 'text-emerald-400 font-bold' : n.type === 'system' ? 'text-sky-400' : n.type === 'episode' ? 'text-rose-400' : 'text-amber-400'}>
-                    {n.type === "announcement" ? "Announcement" : n.type === "feedback" ? "Feedback" : n.type === "system" ? "System Alert" : n.type === "episode" ? "New Episode" : "Discovery"}
-                  </span>
-                </p>
-                <p class="mt-0.5 truncate text-sm font-semibold text-foreground">{n.title}</p>
-                <p class="mt-0.5 break-words line-clamp-2 text-xs text-muted-foreground leading-relaxed">{n.message}</p>
-                <p class="mt-1 text-[10px] font-medium text-muted-foreground/70">{timeAgo(n.created_at)}</p>
+                </button>
+
+                <!-- Body -->
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center justify-between gap-1">
+                    <p class="flex items-center gap-1.5 truncate text-[10px] font-bold uppercase tracking-wider">
+                      {#if !n.read}
+                        <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-ping"></span>
+                      {/if}
+                      <span class={n.type === 'announcement' ? 'text-primary' : n.type === 'feedback' ? 'text-emerald-400 font-bold' : n.type === 'system' ? 'text-sky-400' : n.type === 'episode' ? 'text-rose-400' : 'text-amber-400'}>
+                        {n.type === "announcement" ? "Announcement" : n.type === "feedback" ? "Feedback" : n.type === "system" ? "System Alert" : n.type === "episode" ? "New Episode" : "Discovery"}
+                      </span>
+                    </p>
+                    <span class="text-[10px] font-medium text-muted-foreground/70">{timeAgo(n.created_at)}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onclick={() => openNotification(n)}
+                    class="mt-0.5 block w-full text-left text-sm font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
+                  >
+                    {n.title}
+                  </button>
+
+                  {#if expandedIds.has(n.id)}
+                    <div class="mt-1.5 whitespace-pre-wrap break-words rounded-xl border border-border/70 bg-card/80 p-3 text-xs text-foreground/95 leading-relaxed shadow-xs">
+                      {n.message}
+                    </div>
+                    <button
+                      type="button"
+                      onclick={(e) => toggleExpand(n.id, e)}
+                      class="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                    >
+                      Show less ▲
+                    </button>
+                  {:else}
+                    <p class="mt-0.5 break-words line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+                      {n.message}
+                    </p>
+                    {#if n.message.length > 70 || n.message.includes("\n")}
+                      <button
+                        type="button"
+                        onclick={(e) => toggleExpand(n.id, e)}
+                        class="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                      >
+                        Read full announcement ▼
+                      </button>
+                    {/if}
+                  {/if}
+                </div>
               </div>
-            </button>
-            <!-- Per-item dismiss (stays gone — tombstoned against re-sync) -->
-            <button
-              type="button"
-              onclick={(e) => {
-                e.stopPropagation();
-                notificationHistory.dismiss(n.id);
-              }}
-              class="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-md text-xs text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-400 group-hover:opacity-100"
-              title="Dismiss notification"
-              aria-label="Dismiss notification"
-            >
-              <Icon name="x-mark" class="h-3.5 w-3.5" />
-            </button>
+
+              <!-- Per-item dismiss (stays gone — tombstoned against re-sync) -->
+              <button
+                type="button"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  notificationHistory.dismiss(n.id);
+                }}
+                class="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-xs text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-400 group-hover:opacity-100 cursor-pointer"
+                title="Dismiss notification"
+                aria-label="Dismiss notification"
+              >
+                <Icon name="x-mark" class="h-3.5 w-3.5" />
+              </button>
             </div>
           {/each}
         {/if}
