@@ -59,8 +59,8 @@
   const VOLUME_STEP = 0.1;
   const CONTROLS_HIDE_MS = 2500;
   const DOUBLE_TAP_SEEK_SECONDS = 10;
-  const DOUBLE_TAP_MS = 320;
-  const SEEK_ACCUMULATE_MS = 650;
+  const DOUBLE_TAP_MS = 450;
+  const SEEK_ACCUMULATE_MS = 750;
   const BRIGHTNESS_DRAG_THRESHOLD = 24;
   const BRIGHTNESS_SENSITIVITY = 250;
   const MIN_BRIGHTNESS = 0.4;
@@ -305,12 +305,43 @@
     }
   }
 
+  let lastTouchHandledAt = 0;
+
   function onZoneClick(side: "left" | "right"): void {
     if (wasDragging) {
       wasDragging = false;
       return;
     }
+    // Prevent synthetic mouse clicks generated after mobile touch taps
+    if (Date.now() - lastTouchHandledAt < 400) {
+      return;
+    }
     handleZoneTap(side);
+  }
+
+  function onZoneDblClick(side: "left" | "right"): void {
+    if (Date.now() - lastTapTime < 150 && accumulatedSeekSeconds > 0) {
+      return;
+    }
+    clearTimeout(pendingTapTimer);
+    pendingTapTimer = undefined;
+
+    const delta = side === "left" ? -DOUBLE_TAP_SEEK_SECONDS : DOUBLE_TAP_SEEK_SECONDS;
+    seekBy(delta);
+
+    accumulatedSeekSeconds += DOUBLE_TAP_SEEK_SECONDS;
+    seekFlashSide = side;
+    lastTapSide = side;
+    lastTapTime = Date.now();
+    triggerRipple(side);
+    pokeControls();
+
+    clearTimeout(accumulateTimer);
+    accumulateTimer = setTimeout(() => {
+      accumulatedSeekSeconds = 0;
+      seekFlashSide = null;
+      lastTapSide = null;
+    }, 700);
   }
 
   // Vertical touch-drag on the left zone = brightness (visual filter only —
@@ -322,6 +353,11 @@
     gestureStartBrightness = brightness;
     gestureIsDrag = false;
     wasDragging = false;
+  }
+
+  function onZonePointerDown(event: PointerEvent): void {
+    gestureStartX = event.clientX;
+    gestureStartY = event.clientY;
   }
 
   function onLeftZonePointerMove(event: PointerEvent): void {
@@ -342,10 +378,19 @@
     }
   }
 
-  function onLeftZonePointerUp(): void {
-    if (gestureIsDrag) {
-      wasDragging = true;
-      gestureIsDrag = false;
+  function onZonePointerUp(event: PointerEvent, side: "left" | "right"): void {
+    if (event.pointerType === "touch") {
+      if (side === "left" && gestureIsDrag) {
+        wasDragging = true;
+        gestureIsDrag = false;
+        return;
+      }
+      const dx = Math.abs(event.clientX - gestureStartX);
+      const dy = Math.abs(event.clientY - gestureStartY);
+      if (dx < 20 && dy < 20) {
+        lastTouchHandledAt = Date.now();
+        handleZoneTap(side);
+      }
     }
   }
 
@@ -538,13 +583,15 @@
 
   <!-- Left zone: double-tap/double-click = rewind 10s, vertical touch-drag = brightness -->
   <div
-    class="absolute inset-y-0 left-0 w-1/2 select-none touch-manipulation z-10"
+    class="absolute inset-y-0 left-0 w-1/2 select-none touch-manipulation z-10 cursor-pointer"
     onpointerdown={onLeftZonePointerDown}
     onpointermove={onLeftZonePointerMove}
-    onpointerup={onLeftZonePointerUp}
-    onpointercancel={onLeftZonePointerUp}
+    onpointerup={(e) => onZonePointerUp(e, "left")}
+    onpointercancel={() => { gestureIsDrag = false; }}
     onclick={() => onZoneClick("left")}
+    ondblclick={(e) => { e.preventDefault(); onZoneDblClick("left"); }}
     role="presentation"
+    aria-label="Double-tap to rewind 10 seconds"
   >
     <!-- Left ripple wave for rewind -->
     {#if rippleActive === 'left'}
@@ -556,9 +603,13 @@
 
   <!-- Right zone: double-tap/double-click = fast-forward 10s -->
   <div
-    class="absolute inset-y-0 right-0 w-1/2 select-none touch-manipulation z-10"
+    class="absolute inset-y-0 right-0 w-1/2 select-none touch-manipulation z-10 cursor-pointer"
+    onpointerdown={onZonePointerDown}
+    onpointerup={(e) => onZonePointerUp(e, "right")}
     onclick={() => onZoneClick("right")}
+    ondblclick={(e) => { e.preventDefault(); onZoneDblClick("right"); }}
     role="presentation"
+    aria-label="Double-tap to fast forward 10 seconds"
   >
     <!-- Right ripple wave for fast-forward -->
     {#if rippleActive === 'right'}

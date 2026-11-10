@@ -139,12 +139,130 @@
   let watchSeekFlash = $state<{ side: "left" | "right"; amount: number } | null>(null);
   let watchSeekFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
+  let watchAccumulatedSeek = $state(0);
+  let watchAccumulateTimer: ReturnType<typeof setTimeout> | undefined;
+  let watchPendingTapTimer: ReturnType<typeof setTimeout> | undefined;
+  let watchLastTapSide: "left" | "right" | null = null;
+  let watchLastTapTime = 0;
+  let watchRippleActive = $state<"left" | "right" | null>(null);
+  let watchRippleTimer: ReturnType<typeof setTimeout> | undefined;
+  let watchGestureStartX = 0;
+  let watchGestureStartY = 0;
+  let watchLastTouchHandledAt = 0;
+
+  function triggerWatchRipple(side: "left" | "right"): void {
+    watchRippleActive = side;
+    clearTimeout(watchRippleTimer);
+    watchRippleTimer = setTimeout(() => {
+      watchRippleActive = null;
+    }, 450);
+  }
+
   function showWatchSeekFlash(side: "left" | "right", amount: number): void {
     watchSeekFlash = { side, amount };
     clearTimeout(watchSeekFlashTimer);
     watchSeekFlashTimer = setTimeout(() => {
       watchSeekFlash = null;
-    }, 650);
+    }, 700);
+  }
+
+  function seekWatchBy(delta: number): void {
+    if (!usesAnichiBridge) return;
+    const isFwd = delta > 0;
+    const target = Math.max(0, realPos + delta);
+    sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
+    realPos = target;
+    showWatchSeekFlash(isFwd ? "right" : "left", Math.abs(delta));
+    triggerWatchRipple(isFwd ? "right" : "left");
+  }
+
+  function handleWatchZoneTap(side: "left" | "right"): void {
+    const now = Date.now();
+    const threshold = watchAccumulatedSeek > 0 ? 750 : 450;
+    const isConsecutive = watchLastTapSide === side && now - watchLastTapTime < threshold;
+
+    if (isConsecutive) {
+      clearTimeout(watchPendingTapTimer);
+      watchPendingTapTimer = undefined;
+
+      const delta = side === "left" ? -10 : 10;
+      watchAccumulatedSeek += 10;
+      const target = Math.max(0, realPos + delta);
+      sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
+      realPos = target;
+      showWatchSeekFlash(side, watchAccumulatedSeek);
+      triggerWatchRipple(side);
+
+      watchLastTapSide = side;
+      watchLastTapTime = now;
+
+      clearTimeout(watchAccumulateTimer);
+      watchAccumulateTimer = setTimeout(() => {
+        watchAccumulatedSeek = 0;
+        watchLastTapSide = null;
+      }, 750);
+    } else {
+      clearTimeout(watchAccumulateTimer);
+      watchAccumulatedSeek = 0;
+
+      watchLastTapSide = side;
+      watchLastTapTime = now;
+
+      clearTimeout(watchPendingTapTimer);
+      watchPendingTapTimer = setTimeout(() => {
+        sendToPlayer({ cmd: "PLAY_TOGGLE" });
+        watchLastTapSide = null;
+        watchPendingTapTimer = undefined;
+      }, 450);
+    }
+  }
+
+  function onWatchZonePointerDown(e: PointerEvent): void {
+    watchGestureStartX = e.clientX;
+    watchGestureStartY = e.clientY;
+  }
+
+  function onWatchZonePointerUp(e: PointerEvent, side: "left" | "right"): void {
+    if (e.pointerType === "touch") {
+      const dx = Math.abs(e.clientX - watchGestureStartX);
+      const dy = Math.abs(e.clientY - watchGestureStartY);
+      if (dx < 20 && dy < 20) {
+        watchLastTouchHandledAt = Date.now();
+        handleWatchZoneTap(side);
+      }
+    }
+  }
+
+  function onWatchZoneClick(side: "left" | "right"): void {
+    if (Date.now() - watchLastTouchHandledAt < 400) {
+      return;
+    }
+    handleWatchZoneTap(side);
+  }
+
+  function onWatchZoneDblClick(side: "left" | "right"): void {
+    if (Date.now() - watchLastTapTime < 150 && watchAccumulatedSeek > 0) {
+      return;
+    }
+    clearTimeout(watchPendingTapTimer);
+    watchPendingTapTimer = undefined;
+
+    const delta = side === "left" ? -10 : 10;
+    watchAccumulatedSeek += 10;
+    const target = Math.max(0, realPos + delta);
+    sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
+    realPos = target;
+    showWatchSeekFlash(side, watchAccumulatedSeek);
+    triggerWatchRipple(side);
+
+    watchLastTapSide = side;
+    watchLastTapTime = Date.now();
+
+    clearTimeout(watchAccumulateTimer);
+    watchAccumulateTimer = setTimeout(() => {
+      watchAccumulatedSeek = 0;
+      watchLastTapSide = null;
+    }, 750);
   }
 
   // Server 2: animepahe.ws episode page, cropped so ONLY the player region is
@@ -488,11 +606,7 @@
         if (usesAnichiBridge) {
           e.preventDefault();
           const isFwd = e.key === "ArrowRight" || e.key === "l" || e.key === "L";
-          const delta = isFwd ? 10 : -10;
-          const target = Math.max(0, realPos + delta);
-          sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
-          realPos = target;
-          showWatchSeekFlash(isFwd ? "right" : "left", 10);
+          seekWatchBy(isFwd ? 10 : -10);
         }
       } else if (e.key === "k" || e.key === "K") {
         if (usesAnichiBridge) {
@@ -1431,7 +1545,7 @@
               </div>
             {/if}
 
-            <!-- Fast forward / rewind keyboard seek flash (Server 1 / 4) -->
+            <!-- Fast forward / rewind keyboard/gesture seek flash (Server 1 / 4) -->
             {#if watchSeekFlash}
               <div
                 class="pointer-events-none absolute inset-y-0 z-30 flex w-1/2 items-center justify-center {watchSeekFlash.side === 'left' ? 'left-0' : 'right-0'}"
@@ -1444,6 +1558,43 @@
                     {watchSeekFlash.side === 'right' ? `+${watchSeekFlash.amount}s` : `-${watchSeekFlash.amount}s`}
                   </span>
                 </div>
+              </div>
+            {/if}
+
+            <!-- Gesture zones for Server 1 / 4 iframe players: double-tap/double-click seek -->
+            {#if usesAnichiBridge}
+              <!-- Left Zone (Rewind 10s): leaves bottom 16 (64px) clear for native player scrubber & buttons -->
+              <div
+                class="absolute top-0 bottom-16 left-0 w-[40%] select-none touch-manipulation z-20 cursor-pointer"
+                onpointerdown={onWatchZonePointerDown}
+                onpointerup={(e) => onWatchZonePointerUp(e, "left")}
+                onclick={() => onWatchZoneClick("left")}
+                ondblclick={(e) => { e.preventDefault(); onWatchZoneDblClick("left"); }}
+                role="presentation"
+                aria-label="Double-tap or double-click to rewind 10 seconds"
+              >
+                {#if watchRippleActive === "left"}
+                  <div class="pointer-events-none absolute inset-0 flex items-center justify-start overflow-hidden">
+                    <div class="h-full w-full rounded-r-full bg-white/10 animate-ping opacity-75"></div>
+                  </div>
+                {/if}
+              </div>
+
+              <!-- Right Zone (Fast-Forward 10s): leaves bottom 16 (64px) clear for native player scrubber & buttons -->
+              <div
+                class="absolute top-0 bottom-16 right-0 w-[40%] select-none touch-manipulation z-20 cursor-pointer"
+                onpointerdown={onWatchZonePointerDown}
+                onpointerup={(e) => onWatchZonePointerUp(e, "right")}
+                onclick={() => onWatchZoneClick("right")}
+                ondblclick={(e) => { e.preventDefault(); onWatchZoneDblClick("right"); }}
+                role="presentation"
+                aria-label="Double-tap or double-click to fast forward 10 seconds"
+              >
+                {#if watchRippleActive === "right"}
+                  <div class="pointer-events-none absolute inset-0 flex items-center justify-end overflow-hidden">
+                    <div class="h-full w-full rounded-l-full bg-white/10 animate-ping opacity-75"></div>
+                  </div>
+                {/if}
               </div>
             {/if}
 
@@ -1694,6 +1845,34 @@
 
             <!-- View Modes & Player Actions -->
             <div class="flex flex-wrap items-center gap-1.5">
+              {#if usesAnichiBridge}
+                <!-- Quick Rewind 10s button -->
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-lg border border-border/80 px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground active:scale-95 transition-all cursor-pointer"
+                  onclick={() => seekWatchBy(-10)}
+                  title="Rewind 10 seconds (Double-tap left or press J / Left arrow)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5 scale-x-[-1]" aria-hidden="true">
+                    <path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L5.055 7.06zM12.805 7.06C11.555 6.347 10 7.25 10 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L12.805 7.06z" />
+                  </svg>
+                  <span>-10s</span>
+                </button>
+
+                <!-- Quick Fast Forward 10s button -->
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-lg border border-border/80 px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground active:scale-95 transition-all cursor-pointer"
+                  onclick={() => seekWatchBy(10)}
+                  title="Fast forward 10 seconds (Double-tap right or press L / Right arrow)"
+                >
+                  <span>+10s</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L5.055 7.06zM12.805 7.06C11.555 6.347 10 7.25 10 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L12.805 7.06z" />
+                  </svg>
+                </button>
+              {/if}
+
               <!-- Expand / Theater Mode -->
               <button
                 type="button"

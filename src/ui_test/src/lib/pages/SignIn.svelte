@@ -3,9 +3,11 @@
   import { router } from "$lib/router.svelte";
   import { hasValidAuthPass } from "$lib/api/account";
   import { ApiError } from "$lib/api/client";
+  import Icon from "$lib/components/Icon.svelte";
 
   let identifier = $state("");
   let password = $state("");
+  let showPassword = $state(false);
   let submitting = $state(false);
   let errorMessage = $state("");
 
@@ -60,13 +62,24 @@
 
       <label class="flex flex-col gap-1.5 text-sm">
         <span class="text-muted-foreground">Password</span>
-        <input
-          type="password"
-          bind:value={password}
-          required
-          autocomplete="current-password"
-          class="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-primary"
-        />
+        <div class="relative flex items-center">
+          <input
+            type={showPassword ? "text" : "password"}
+            bind:value={password}
+            required
+            autocomplete="current-password"
+            class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 outline-none focus:border-primary"
+          />
+          <button
+            type="button"
+            onclick={() => (showPassword = !showPassword)}
+            class="absolute right-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            title={showPassword ? "Hide password" : "Show password"}
+          >
+            <Icon name={showPassword ? "eye-slash" : "eye"} class="h-4.5 w-4.5" />
+          </button>
+        </div>
       </label>
 
       {#if errorMessage}

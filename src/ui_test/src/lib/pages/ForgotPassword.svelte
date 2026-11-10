@@ -25,6 +25,8 @@
 
   let newPassword = $state("");
   let confirm = $state("");
+  let showNewPassword = $state(false);
+  let showConfirm = $state(false);
   const passwordProblem = $derived(newPassword ? passwordProblems(newPassword) : null);
   const strength = $derived(passwordStrength(newPassword));
   const confirmMismatch = $derived(confirm.length > 0 && confirm !== newPassword);
@@ -167,14 +169,25 @@
       <form class="mt-6 flex flex-col gap-4" onsubmit={submitReset}>
         <label class="flex flex-col gap-1.5 text-sm">
           <span class="text-muted-foreground">New password</span>
-          <input
-            type="password"
-            bind:value={newPassword}
-            required
-            autocomplete="new-password"
-            class="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-primary"
-            placeholder="10+ chars with upper, lower, digit, symbol"
-          />
+          <div class="relative flex items-center">
+            <input
+              type={showNewPassword ? "text" : "password"}
+              bind:value={newPassword}
+              required
+              autocomplete="new-password"
+              class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 outline-none focus:border-primary"
+              placeholder="10+ chars with upper, lower, digit, symbol"
+            />
+            <button
+              type="button"
+              onclick={() => (showNewPassword = !showNewPassword)}
+              class="absolute right-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+              aria-label={showNewPassword ? "Hide password" : "Show password"}
+              title={showNewPassword ? "Hide password" : "Show password"}
+            >
+              <Icon name={showNewPassword ? "eye-slash" : "eye"} class="h-4.5 w-4.5" />
+            </button>
+          </div>
           {#if newPassword}
             <div class="mt-1 flex items-center gap-2">
               <div class="flex h-1.5 flex-1 gap-1 overflow-hidden rounded-full">
@@ -191,13 +204,24 @@
         </label>
         <label class="flex flex-col gap-1.5 text-sm">
           <span class="text-muted-foreground">Confirm new password</span>
-          <input
-            type="password"
-            bind:value={confirm}
-            required
-            autocomplete="new-password"
-            class="rounded-lg border bg-background px-3 py-2 outline-none focus:border-primary {confirmMismatch ? 'border-red-500' : 'border-border'}"
-          />
+          <div class="relative flex items-center">
+            <input
+              type={showConfirm ? "text" : "password"}
+              bind:value={confirm}
+              required
+              autocomplete="new-password"
+              class="w-full rounded-lg border bg-background px-3 py-2 pr-10 outline-none focus:border-primary {confirmMismatch ? 'border-red-500' : 'border-border'}"
+            />
+            <button
+              type="button"
+              onclick={() => (showConfirm = !showConfirm)}
+              class="absolute right-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+              aria-label={showConfirm ? "Hide password" : "Show password"}
+              title={showConfirm ? "Hide password" : "Show password"}
+            >
+              <Icon name={showConfirm ? "eye-slash" : "eye"} class="h-4.5 w-4.5" />
+            </button>
+          </div>
           {#if confirmMismatch}
             <span class="text-xs text-red-400">Passwords don't match</span>
           {/if}

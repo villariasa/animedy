@@ -3,11 +3,14 @@
   import { router } from "$lib/router.svelte";
   import { passwordProblems, passwordStrength, USERNAME_RE, hasValidAuthPass } from "$lib/api/account";
   import { ApiError } from "$lib/api/client";
+  import Icon from "$lib/components/Icon.svelte";
 
   let email = $state("");
   let username = $state("");
   let password = $state("");
   let confirm = $state("");
+  let showPassword = $state(false);
+  let showConfirm = $state(false);
   let submitting = $state(false);
   let errorMessage = $state("");
   let usernameStatus = $state<"idle" | "checking" | "available" | "taken">("idle");
@@ -117,14 +120,25 @@
 
       <label class="flex flex-col gap-1.5 text-sm">
         <span class="text-muted-foreground">Password</span>
-        <input
-          type="password"
-          bind:value={password}
-          required
-          autocomplete="new-password"
-          class="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-primary"
-          placeholder="10+ chars with upper, lower, digit, symbol"
-        />
+        <div class="relative flex items-center">
+          <input
+            type={showPassword ? "text" : "password"}
+            bind:value={password}
+            required
+            autocomplete="new-password"
+            class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 outline-none focus:border-primary"
+            placeholder="10+ chars with upper, lower, digit, symbol"
+          />
+          <button
+            type="button"
+            onclick={() => (showPassword = !showPassword)}
+            class="absolute right-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            title={showPassword ? "Hide password" : "Show password"}
+          >
+            <Icon name={showPassword ? "eye-slash" : "eye"} class="h-4.5 w-4.5" />
+          </button>
+        </div>
         {#if password}
           <div class="mt-1 flex items-center gap-2">
             <div class="flex h-1.5 flex-1 gap-1 overflow-hidden rounded-full">
@@ -142,13 +156,24 @@
 
       <label class="flex flex-col gap-1.5 text-sm">
         <span class="text-muted-foreground">Confirm password</span>
-        <input
-          type="password"
-          bind:value={confirm}
-          required
-          autocomplete="new-password"
-          class="rounded-lg border bg-background px-3 py-2 outline-none focus:border-primary {confirmMismatch ? 'border-red-500' : 'border-border'}"
-        />
+        <div class="relative flex items-center">
+          <input
+            type={showConfirm ? "text" : "password"}
+            bind:value={confirm}
+            required
+            autocomplete="new-password"
+            class="w-full rounded-lg border bg-background px-3 py-2 pr-10 outline-none focus:border-primary {confirmMismatch ? 'border-red-500' : 'border-border'}"
+          />
+          <button
+            type="button"
+            onclick={() => (showConfirm = !showConfirm)}
+            class="absolute right-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+            aria-label={showConfirm ? "Hide password" : "Show password"}
+            title={showConfirm ? "Hide password" : "Show password"}
+          >
+            <Icon name={showConfirm ? "eye-slash" : "eye"} class="h-4.5 w-4.5" />
+          </button>
+        </div>
         {#if confirmMismatch}
           <span class="text-xs text-red-400">Passwords don't match</span>
         {/if}
