@@ -46,6 +46,7 @@
 
   let newUsername = $state("");
   let usernamePassword = $state("");
+  let showUsernamePassword = $state(false);
   let usernameAvail = $state<"idle" | "checking" | "available" | "taken">("idle");
   let usernameCheckTimer: ReturnType<typeof setTimeout> | undefined;
   const newUsernameValid = $derived(USERNAME_RE.test(newUsername));
@@ -53,6 +54,9 @@
   let curPassword = $state("");
   let newPassword = $state("");
   let confirmPassword = $state("");
+  let showCurPassword = $state(false);
+  let showNewPassword = $state(false);
+  let showConfirmPassword = $state(false);
   const newPasswordProblem = $derived(newPassword ? passwordProblems(newPassword) : null);
   const newPasswordStrength = $derived(passwordStrength(newPassword));
   const passwordMismatch = $derived(confirmPassword.length > 0 && confirmPassword !== newPassword);
@@ -388,13 +392,23 @@
             </label>
             <label class="flex flex-col gap-1 text-sm">
               <span class="text-xs text-muted-foreground">Current password (to confirm it's you)</span>
-              <input
-                type="password"
-                bind:value={usernamePassword}
-                required
-                autocomplete="current-password"
-                class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-              />
+              <div class="relative">
+                <input
+                  type={showUsernamePassword ? "text" : "password"}
+                  bind:value={usernamePassword}
+                  required
+                  autocomplete="current-password"
+                  class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none"
+                  onclick={() => (showUsernamePassword = !showUsernamePassword)}
+                  aria-label={showUsernamePassword ? "Hide password" : "Show password"}
+                >
+                  <Icon name={showUsernamePassword ? "eye-slash" : "eye"} class="h-4 w-4" />
+                </button>
+              </div>
             </label>
             <button
               type="submit"
@@ -408,24 +422,44 @@
           <form class="mt-3 flex max-w-sm flex-col gap-2.5" onsubmit={submitPasswordChange}>
             <label class="flex flex-col gap-1 text-sm">
               <span class="text-xs text-muted-foreground">Current password</span>
-              <input
-                type="password"
-                bind:value={curPassword}
-                required
-                autocomplete="current-password"
-                class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-              />
+              <div class="relative">
+                <input
+                  type={showCurPassword ? "text" : "password"}
+                  bind:value={curPassword}
+                  required
+                  autocomplete="current-password"
+                  class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none"
+                  onclick={() => (showCurPassword = !showCurPassword)}
+                  aria-label={showCurPassword ? "Hide password" : "Show password"}
+                >
+                  <Icon name={showCurPassword ? "eye-slash" : "eye"} class="h-4 w-4" />
+                </button>
+              </div>
             </label>
             <label class="flex flex-col gap-1 text-sm">
               <span class="text-xs text-muted-foreground">New password</span>
-              <input
-                type="password"
-                bind:value={newPassword}
-                required
-                autocomplete="new-password"
-                class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                placeholder="10+ chars with upper, lower, digit, symbol"
-              />
+              <div class="relative">
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  bind:value={newPassword}
+                  required
+                  autocomplete="new-password"
+                  class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary"
+                  placeholder="10+ chars with upper, lower, digit, symbol"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none"
+                  onclick={() => (showNewPassword = !showNewPassword)}
+                  aria-label={showNewPassword ? "Hide password" : "Show password"}
+                >
+                  <Icon name={showNewPassword ? "eye-slash" : "eye"} class="h-4 w-4" />
+                </button>
+              </div>
               {#if newPassword}
                 <div class="mt-1 flex items-center gap-2">
                   <div class="flex h-1.5 flex-1 gap-1 overflow-hidden rounded-full">
@@ -442,13 +476,23 @@
             </label>
             <label class="flex flex-col gap-1 text-sm">
               <span class="text-xs text-muted-foreground">Confirm new password</span>
-              <input
-                type="password"
-                bind:value={confirmPassword}
-                required
-                autocomplete="new-password"
-                class="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary {passwordMismatch ? 'border-red-500' : 'border-border'}"
-              />
+              <div class="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  bind:value={confirmPassword}
+                  required
+                  autocomplete="new-password"
+                  class="w-full rounded-lg border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary {passwordMismatch ? 'border-red-500' : 'border-border'}"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer focus:outline-none"
+                  onclick={() => (showConfirmPassword = !showConfirmPassword)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  <Icon name={showConfirmPassword ? "eye-slash" : "eye"} class="h-4 w-4" />
+                </button>
+              </div>
               {#if passwordMismatch}
                 <span class="text-xs text-red-400">Passwords don't match</span>
               {/if}
