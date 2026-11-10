@@ -136,6 +136,16 @@
   let selectedServer = $state<StreamServer>(getStoredServer());
   let frameBox = $state<HTMLDivElement | null>(null);
   let isFullscreen = $state(false);
+  let watchSeekFlash = $state<{ side: "left" | "right"; amount: number } | null>(null);
+  let watchSeekFlashTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showWatchSeekFlash(side: "left" | "right", amount: number): void {
+    watchSeekFlash = { side, amount };
+    clearTimeout(watchSeekFlashTimer);
+    watchSeekFlashTimer = setTimeout(() => {
+      watchSeekFlash = null;
+    }, 650);
+  }
 
   // Server 2: animepahe.ws episode page, cropped so ONLY the player region is
   // visible (their player is referer-locked, so the page itself is framed).
@@ -470,17 +480,24 @@
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
         fullscreenFrame();
-      } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      } else if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "l" || e.key === "L" || e.key === "j" || e.key === "J") {
         // Seeking only works for servers speaking the anichi.to.html bridge —
         // other iframes run a third-party player we have no protocol to
         // control, so their own in-frame controls must handle arrow keys
         // (which requires the iframe to keep keyboard focus; see below).
         if (usesAnichiBridge) {
           e.preventDefault();
-          const delta = e.key === "ArrowRight" ? 10 : -10;
+          const isFwd = e.key === "ArrowRight" || e.key === "l" || e.key === "L";
+          const delta = isFwd ? 10 : -10;
           const target = Math.max(0, realPos + delta);
           sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
           realPos = target;
+          showWatchSeekFlash(isFwd ? "right" : "left", 10);
+        }
+      } else if (e.key === "k" || e.key === "K") {
+        if (usesAnichiBridge) {
+          e.preventDefault();
+          sendToPlayer({ cmd: "PLAY_TOGGLE" });
         }
       }
     };
@@ -1411,6 +1428,22 @@
                 <p class="mt-3 text-sm font-semibold text-slate-200 animate-pulse">
                   Loading Episode {episodeId}…
                 </p>
+              </div>
+            {/if}
+
+            <!-- Fast forward / rewind keyboard seek flash (Server 1 / 4) -->
+            {#if watchSeekFlash}
+              <div
+                class="pointer-events-none absolute inset-y-0 z-30 flex w-1/2 items-center justify-center {watchSeekFlash.side === 'left' ? 'left-0' : 'right-0'}"
+              >
+                <div class="flex flex-col items-center gap-1.5 rounded-full bg-black/80 px-6 py-4 text-white shadow-xl backdrop-blur-md animate-in fade-in zoom-in-90 duration-150">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-8 w-8 text-primary animate-pulse {watchSeekFlash.side === 'left' ? 'scale-x-[-1]' : ''}" aria-hidden="true">
+                    <path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L5.055 7.06zM12.805 7.06C11.555 6.347 10 7.25 10 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L12.805 7.06z" />
+                  </svg>
+                  <span class="text-sm font-extrabold tracking-wide tabular-nums text-white">
+                    {watchSeekFlash.side === 'right' ? `+${watchSeekFlash.amount}s` : `-${watchSeekFlash.amount}s`}
+                  </span>
+                </div>
               </div>
             {/if}
 

@@ -50,6 +50,8 @@ describe("Player controls", () => {
     expect(screen.getByRole("button", { name: "Fullscreen" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Picture in picture" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Episode list" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Rewind 10 seconds" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fast forward 10 seconds" })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: /Auto Play/ })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: /Auto Next/ })).toBeTruthy();
   });
@@ -63,6 +65,91 @@ describe("Player controls", () => {
     expect(next.disabled).toBe(false);
     next.click();
     expect(onnext).toHaveBeenCalledTimes(1);
+  });
+
+  test("rewind and fast-forward buttons seek by 10s", async () => {
+    const { container } = renderPlayer();
+    const video = getVideo(container);
+    Object.defineProperty(video, "duration", { value: 500, writable: true, configurable: true });
+    await seekTo(video, 100);
+
+    const fwdBtn = screen.getByRole("button", { name: "Fast forward 10 seconds" });
+    const rewBtn = screen.getByRole("button", { name: "Rewind 10 seconds" });
+
+    fwdBtn.click();
+    await tick();
+    expect(video.currentTime).toBe(110);
+
+    rewBtn.click();
+    await tick();
+    expect(video.currentTime).toBe(100);
+  });
+
+  test("double-tap right zone fast forwards 10s and accumulates on consecutive taps", async () => {
+    const { container } = renderPlayer();
+    const video = getVideo(container);
+    Object.defineProperty(video, "duration", { value: 500, writable: true, configurable: true });
+    await seekTo(video, 50);
+
+    // Right zone is the presentation div with inset-y-0 right-0
+    const rightZone = container.querySelector(".absolute.inset-y-0.right-0") as HTMLElement;
+    expect(rightZone).toBeTruthy();
+
+    // First tap
+    rightZone.click();
+    await tick();
+    expect(video.currentTime).toBe(50); // Single tap does not seek immediately
+
+    // Second tap (double tap)
+    rightZone.click();
+    await tick();
+    expect(video.currentTime).toBe(60); // Fast forwards +10s
+    expect(screen.getByText("+10 seconds")).toBeTruthy();
+
+    // Third tap (accumulation)
+    rightZone.click();
+    await tick();
+    expect(video.currentTime).toBe(70); // Fast forwards another +10s (+20s total)
+    expect(screen.getByText("+20 seconds")).toBeTruthy();
+  });
+
+  test("double-tap left zone rewinds 10s", async () => {
+    const { container } = renderPlayer();
+    const video = getVideo(container);
+    Object.defineProperty(video, "duration", { value: 500, writable: true, configurable: true });
+    await seekTo(video, 50);
+
+    // Left zone is the presentation div with inset-y-0 left-0
+    const leftZone = container.querySelector(".absolute.inset-y-0.left-0") as HTMLElement;
+    expect(leftZone).toBeTruthy();
+
+    // First tap
+    leftZone.click();
+    await tick();
+    expect(video.currentTime).toBe(50);
+
+    // Second tap (double tap)
+    leftZone.click();
+    await tick();
+    expect(video.currentTime).toBe(40); // Rewinds -10s
+    expect(screen.getByText("-10 seconds")).toBeTruthy();
+  });
+
+  test("keyboard shortcuts (j / l / ArrowLeft / ArrowRight) seek properly", async () => {
+    const { container } = renderPlayer();
+    const video = getVideo(container);
+    Object.defineProperty(video, "duration", { value: 500, writable: true, configurable: true });
+    await seekTo(video, 50);
+
+    // 'l' or ArrowRight seeks forward
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "l" }));
+    await tick();
+    expect(video.currentTime).toBe(60);
+
+    // 'j' or ArrowLeft seeks backward
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" }));
+    await tick();
+    expect(video.currentTime).toBe(50);
   });
 });
 
