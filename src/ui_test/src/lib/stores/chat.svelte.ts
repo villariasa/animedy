@@ -7,6 +7,7 @@ import {
   apiChatSend,
   apiChatDelete,
   apiChatTyping,
+  apiUploadChatAttachment,
   hasToken,
   loadStoredUser,
   type ChatMessage
@@ -33,6 +34,7 @@ class ChatStore {
   open = $state(false);
   messages = $state<ChatMessage[]>([]);
   sending = $state(false);
+  uploading = $state(false);
   error = $state("");
   /** Messages newer than the last one seen on this device. */
   unread = $state(0);
@@ -129,13 +131,13 @@ class ChatStore {
       .slice(-MAX_IN_MEMORY);
   }
 
-  async send(body: string): Promise<boolean> {
+  async send(body: string, attachment?: { url: string; type: string }): Promise<boolean> {
     const text = body.trim();
-    if (!text || this.sending) return false;
+    if ((!text && !attachment) || this.sending) return false;
     this.sending = true;
     this.error = "";
     try {
-      const { message } = await apiChatSend(text);
+      const { message } = await apiChatSend(text, attachment);
       this.merge([message]);
       this.latestId = Math.max(this.latestId, message.id);
       this.markRead(); // your own message is never "unread"
@@ -150,6 +152,27 @@ class ChatStore {
       return false;
     } finally {
       this.sending = false;
+    }
+  }
+
+  /** Upload an image/GIF then send it as (or alongside) a message. */
+  async sendAttachment(file: File, caption = ""): Promise<boolean> {
+    if (this.uploading || this.sending) return false;
+    this.uploading = true;
+    this.error = "";
+    try {
+      const { url, type } = await apiUploadChatAttachment(file);
+      return await this.send(caption, { url, type });
+    } catch (err) {
+      this.error =
+        err instanceof ApiError && err.httpCode === 429
+          ? "Slow down — wait a few seconds between uploads"
+          : err instanceof Error
+            ? err.message
+            : "Failed to upload";
+      return false;
+    } finally {
+      this.uploading = false;
     }
   }
 

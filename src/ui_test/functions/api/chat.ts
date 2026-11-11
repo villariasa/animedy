@@ -12,6 +12,8 @@ export interface ChatMessageRow {
   username: string;
   avatar_url?: string | null;
   body: string;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
   created_at: string;
   is_muted?: number | null;
 }
@@ -30,7 +32,7 @@ export const onRequestGet: PagesFunction = async (context) => {
   if (since !== null && Number.isInteger(since) && since >= 0) {
     const result = await db
       .prepare(
-        `SELECT id, user_id, username, avatar_url, body, created_at,
+        `SELECT id, user_id, username, avatar_url, body, attachment_url, attachment_type, created_at,
                 (SELECT 1 FROM chat_mutes cm WHERE cm.user_id = chat_messages.user_id AND (cm.muted_until IS NULL OR cm.muted_until > datetime('now'))) AS is_muted
          FROM chat_messages WHERE deleted = 0 AND id > ?
          ORDER BY id ASC LIMIT 100`
@@ -41,7 +43,7 @@ export const onRequestGet: PagesFunction = async (context) => {
   } else {
     const result = await db
       .prepare(
-        `SELECT id, user_id, username, avatar_url, body, created_at,
+        `SELECT id, user_id, username, avatar_url, body, attachment_url, attachment_type, created_at,
                 (SELECT 1 FROM chat_mutes cm WHERE cm.user_id = chat_messages.user_id AND (cm.muted_until IS NULL OR cm.muted_until > datetime('now'))) AS is_muted
          FROM chat_messages WHERE deleted = 0
          ORDER BY id DESC LIMIT ?`
@@ -85,8 +87,17 @@ export const onRequestPost: PagesFunction = async (context) => {
 
   const bodyJson = await readJson(context.request);
   const text = typeof bodyJson.body === "string" ? bodyJson.body.trim() : "";
-  if (!text) return fail("Message is empty", 422);
+  const attachmentUrl = typeof bodyJson.attachment_url === "string" ? bodyJson.attachment_url : "";
+  const attachmentType = typeof bodyJson.attachment_type === "string" ? bodyJson.attachment_type : "";
+
+  if (!text && !attachmentUrl) return fail("Message is empty", 422);
   if (text.length > MAX_BODY_CHARS) return fail(`Message is too long (max ${MAX_BODY_CHARS} characters)`, 422);
+  // The attachment must be one this user just uploaded via POST /api/chat/upload
+  // (that endpoint keys objects as chat/<userId>/...) — prevents attaching
+  // someone else's or an arbitrary external URL.
+  if (attachmentUrl && !attachmentUrl.startsWith(`/api/chat/media/chat/${userId}/`)) {
+    return fail("Invalid attachment", 422);
+  }
 
   const mute = await db
     .prepare(`SELECT muted_until FROM chat_mutes WHERE user_id = ?`)
@@ -111,8 +122,11 @@ export const onRequestPost: PagesFunction = async (context) => {
   const avatarUrl = user?.avatar_url ?? null;
 
   const insert = await db
-    .prepare(`INSERT INTO chat_messages (user_id, username, avatar_url, body) VALUES (?, ?, ?, ?)`)
-    .bind(userId, auth.claims.username, avatarUrl, text)
+    .prepare(
+      `INSERT INTO chat_messages (user_id, username, avatar_url, body, attachment_url, attachment_type)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .bind(userId, auth.claims.username, avatarUrl, text, attachmentUrl || null, attachmentType || null)
     .run();
 
   // Opportunistic prune + clear the sender's typing flag (they just sent).
@@ -129,6 +143,8 @@ export const onRequestPost: PagesFunction = async (context) => {
     username: auth.claims.username,
     avatar_url: avatarUrl,
     body: text,
+    attachment_url: attachmentUrl || null,
+    attachment_type: attachmentType || null,
     created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
   };
   return ok({ message }, "Message sent", 201);

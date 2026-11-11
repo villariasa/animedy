@@ -16,3 +16,7 @@ database_id = "e00b316c-2119-4b2e-85fc-65b431e8b40f"
 binding = "AVATARS"
 bucket_name = "animedy-avatars"
 
+[[r2_buckets]]
+binding = "CHAT_MEDIA"
+bucket_name = "animedy-chat-media"
+

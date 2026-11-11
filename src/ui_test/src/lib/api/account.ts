@@ -631,6 +631,8 @@ export interface ChatMessage {
   username: string;
   avatar_url?: string | null;
   body: string;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
   created_at: string;
   is_muted?: number | null;
 }
@@ -646,8 +648,67 @@ export function apiChatTyping(): Promise<unknown> {
   return request("/api/chat/typing", { method: "POST", body: {} });
 }
 
-export function apiChatSend(body: string): Promise<{ message: ChatMessage }> {
-  return request("/api/chat", { method: "POST", body: { body } });
+export function apiChatSend(
+  body: string,
+  attachment?: { url: string; type: string }
+): Promise<{ message: ChatMessage }> {
+  return request("/api/chat", {
+    method: "POST",
+    body: {
+      body,
+      ...(attachment ? { attachment_url: attachment.url, attachment_type: attachment.type } : {}),
+    },
+  });
+}
+
+// ---------- chat attachments (images/GIFs) ----------
+
+/** Mirrors functions/api/chat/upload.ts — keep in sync. */
+export const MAX_CHAT_ATTACHMENT_BYTES = 8 * 1024 * 1024; // 8MB
+export const CHAT_ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+export async function apiUploadChatAttachment(file: File): Promise<{ url: string; type: string }> {
+  // Reject locally before transferring anything — the server enforces the
+  // same limits, but failing fast saves uploading megabytes just to get a 413.
+  if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+    throw new ApiError("File is too large — max 8 MB", 413);
+  }
+  if (!CHAT_ATTACHMENT_MIME_TYPES.has(file.type)) {
+    throw new ApiError("Use a JPEG, PNG, WebP or GIF image", 415);
+  }
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch("/api/chat/upload", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+  } catch {
+    throw new ApiError("Network error while uploading", 0);
+  }
+
+  let envelope: Envelope<{ url: string; type: string }>;
+  try {
+    envelope = (await res.json()) as Envelope<{ url: string; type: string }>;
+  } catch {
+    throw new ApiError(`Unexpected response (${res.status})`, res.status);
+  }
+  if (!res.ok || !envelope.success) {
+    throw new ApiError(envelope.message || "Failed to upload", res.status);
+  }
+  return envelope.data;
 }
 
 export function apiChatDelete(messageId: number): Promise<unknown> {

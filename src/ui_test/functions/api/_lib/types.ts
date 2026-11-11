@@ -37,6 +37,7 @@ export interface R2Bucket {
 export interface Env {
   DB: D1Database;
   AVATARS?: R2Bucket;
+  CHAT_MEDIA?: R2Bucket;
   JWT_SECRET: string;
   /** Optional — when set, register/login require a valid Turnstile token. */
   TURNSTILE_SECRET?: string;

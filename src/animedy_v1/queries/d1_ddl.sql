@@ -390,3 +390,13 @@ CREATE TABLE IF NOT EXISTS verify_nonces (
   nonce TEXT PRIMARY KEY,
   used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============================================================
+-- 23. chat_messages attachment columns (GIF/image uploads in
+--     global chat — see CHAT_MEDIA_R2_SETUP.md). SQLite has no
+--     "ADD COLUMN IF NOT EXISTS"; if you've already applied this,
+--     re-running throws "duplicate column name" — that's harmless,
+--     ignore it.
+-- ============================================================
+ALTER TABLE chat_messages ADD COLUMN attachment_url TEXT;
+ALTER TABLE chat_messages ADD COLUMN attachment_type TEXT;

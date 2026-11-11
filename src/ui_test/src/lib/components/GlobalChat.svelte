@@ -7,11 +7,13 @@
   import { chat } from "$lib/stores/chat.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { router } from "$lib/router.svelte";
-  import { apiChatMute, apiChatUnmute } from "$lib/api/account";
+  import { apiChatMute, apiChatUnmute, CHAT_ATTACHMENT_MIME_TYPES, MAX_CHAT_ATTACHMENT_BYTES } from "$lib/api/account";
 
   let draft = $state("");
   let feedEl = $state<HTMLDivElement | undefined>();
   let mutedNotice = $state("");
+  let fileInputEl = $state<HTMLInputElement | undefined>();
+  let lightboxUrl = $state<string | null>(null);
 
   // Hide the bubble on auth pages and while watching (it would overlap the
   // player controls; fullscreen hides it anyway).
@@ -40,6 +42,24 @@
     if (await chat.send(draft)) {
       draft = "";
     }
+  }
+
+  async function onFileSelected(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+
+    if (!CHAT_ATTACHMENT_MIME_TYPES.has(file.type)) {
+      chat.error = "Use a JPEG, PNG, WebP or GIF image";
+      return;
+    }
+    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+      chat.error = "File is too large — max 8 MB";
+      return;
+    }
+    await chat.sendAttachment(file, draft);
+    draft = "";
   }
 
   function fmtTime(createdAt: string): string {
@@ -139,7 +159,23 @@
                   <span class="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-bold text-amber-400">muted</span>
                 {/if}
                 <span class="ml-1.5 text-[10px] text-muted-foreground">{fmtTime(msg.created_at)}</span>
-                <p class="break-words text-foreground/90">{msg.body}</p>
+                {#if msg.body}
+                  <p class="break-words text-foreground/90">{msg.body}</p>
+                {/if}
+                {#if msg.attachment_url}
+                  <button
+                    type="button"
+                    onclick={() => (lightboxUrl = msg.attachment_url ?? null)}
+                    class="mt-1 block overflow-hidden rounded-lg border border-border/60"
+                  >
+                    <img
+                      src={msg.attachment_url}
+                      alt={msg.attachment_type === "image/gif" ? "GIF attachment" : "Image attachment"}
+                      loading="lazy"
+                      class="max-h-48 max-w-[220px] object-contain"
+                    />
+                  </button>
+                {/if}
               </div>
               {#if auth.isAdmin && msg.user_id !== auth.user?.id}
                 <div class="hidden shrink-0 items-center gap-1 group-hover:flex">
@@ -196,6 +232,27 @@
           {/if}
           <form class="flex gap-2" onsubmit={submit}>
             <input
+              bind:this={fileInputEl}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              class="hidden"
+              onchange={onFileSelected}
+            />
+            <button
+              type="button"
+              onclick={() => fileInputEl?.click()}
+              disabled={chat.uploading}
+              title="Send an image or GIF"
+              aria-label="Send an image or GIF"
+              class="flex shrink-0 items-center justify-center rounded-lg border border-border px-2.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              {#if chat.uploading}
+                <span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+              {:else}
+                <Icon name="photo" class="h-4 w-4" />
+              {/if}
+            </button>
+            <input
               type="text"
               bind:value={draft}
               oninput={() => chat.notifyTyping()}
@@ -222,6 +279,18 @@
         {/if}
       </div>
     </div>
+  {/if}
+
+  <!-- Attachment lightbox -->
+  {#if lightboxUrl}
+    <button
+      type="button"
+      onclick={() => (lightboxUrl = null)}
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+      aria-label="Close image"
+    >
+      <img src={lightboxUrl} alt="Attachment" class="max-h-full max-w-full rounded-lg object-contain" />
+    </button>
   {/if}
 {/if}
 
