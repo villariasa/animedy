@@ -139,25 +139,6 @@
   let watchSeekFlash = $state<{ side: "left" | "right"; amount: number } | null>(null);
   let watchSeekFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
-  let watchAccumulatedSeek = $state(0);
-  let watchAccumulateTimer: ReturnType<typeof setTimeout> | undefined;
-  let watchPendingTapTimer: ReturnType<typeof setTimeout> | undefined;
-  let watchLastTapSide: "left" | "right" | null = null;
-  let watchLastTapTime = 0;
-  let watchRippleActive = $state<"left" | "right" | null>(null);
-  let watchRippleTimer: ReturnType<typeof setTimeout> | undefined;
-  let watchGestureStartX = 0;
-  let watchGestureStartY = 0;
-  let watchLastTouchHandledAt = 0;
-
-  function triggerWatchRipple(side: "left" | "right"): void {
-    watchRippleActive = side;
-    clearTimeout(watchRippleTimer);
-    watchRippleTimer = setTimeout(() => {
-      watchRippleActive = null;
-    }, 450);
-  }
-
   function showWatchSeekFlash(side: "left" | "right", amount: number): void {
     watchSeekFlash = { side, amount };
     clearTimeout(watchSeekFlashTimer);
@@ -173,96 +154,6 @@
     sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
     realPos = target;
     showWatchSeekFlash(isFwd ? "right" : "left", Math.abs(delta));
-    triggerWatchRipple(isFwd ? "right" : "left");
-  }
-
-  function handleWatchZoneTap(side: "left" | "right"): void {
-    const now = Date.now();
-    const threshold = watchAccumulatedSeek > 0 ? 750 : 450;
-    const isConsecutive = watchLastTapSide === side && now - watchLastTapTime < threshold;
-
-    if (isConsecutive) {
-      clearTimeout(watchPendingTapTimer);
-      watchPendingTapTimer = undefined;
-
-      const delta = side === "left" ? -10 : 10;
-      watchAccumulatedSeek += 10;
-      const target = Math.max(0, realPos + delta);
-      sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
-      realPos = target;
-      showWatchSeekFlash(side, watchAccumulatedSeek);
-      triggerWatchRipple(side);
-
-      watchLastTapSide = side;
-      watchLastTapTime = now;
-
-      clearTimeout(watchAccumulateTimer);
-      watchAccumulateTimer = setTimeout(() => {
-        watchAccumulatedSeek = 0;
-        watchLastTapSide = null;
-      }, 750);
-    } else {
-      clearTimeout(watchAccumulateTimer);
-      watchAccumulatedSeek = 0;
-
-      watchLastTapSide = side;
-      watchLastTapTime = now;
-
-      clearTimeout(watchPendingTapTimer);
-      watchPendingTapTimer = setTimeout(() => {
-        sendToPlayer({ cmd: "PLAY_TOGGLE" });
-        watchLastTapSide = null;
-        watchPendingTapTimer = undefined;
-      }, 450);
-    }
-  }
-
-  function onWatchZonePointerDown(e: PointerEvent): void {
-    watchGestureStartX = e.clientX;
-    watchGestureStartY = e.clientY;
-  }
-
-  function onWatchZonePointerUp(e: PointerEvent, side: "left" | "right"): void {
-    if (e.pointerType === "touch") {
-      const dx = Math.abs(e.clientX - watchGestureStartX);
-      const dy = Math.abs(e.clientY - watchGestureStartY);
-      if (dx < 20 && dy < 20) {
-        watchLastTouchHandledAt = Date.now();
-        handleWatchZoneTap(side);
-      }
-    }
-  }
-
-  function onWatchZoneClick(side: "left" | "right"): void {
-    if (Date.now() - watchLastTouchHandledAt < 400) {
-      return;
-    }
-    handleWatchZoneTap(side);
-  }
-
-  function onWatchZoneDblClick(side: "left" | "right"): void {
-    if (Date.now() - watchLastTapTime < 150 && watchAccumulatedSeek > 0) {
-      return;
-    }
-    clearTimeout(watchPendingTapTimer);
-    watchPendingTapTimer = undefined;
-
-    const delta = side === "left" ? -10 : 10;
-    watchAccumulatedSeek += 10;
-    const target = Math.max(0, realPos + delta);
-    sendToPlayer({ cmd: "SEEK", value: realDur > 0 ? Math.min(target, realDur) : target });
-    realPos = target;
-    showWatchSeekFlash(side, watchAccumulatedSeek);
-    triggerWatchRipple(side);
-
-    watchLastTapSide = side;
-    watchLastTapTime = Date.now();
-
-    clearTimeout(watchAccumulateTimer);
-    watchAccumulateTimer = setTimeout(() => {
-      watchAccumulatedSeek = 0;
-      watchLastTapSide = null;
-    }, 750);
   }
 
   // Server 2: animepahe.ws episode page, cropped so ONLY the player region is
@@ -608,7 +499,11 @@
           const isFwd = e.key === "ArrowRight" || e.key === "l" || e.key === "L";
           seekWatchBy(isFwd ? 10 : -10);
         }
-      } else if (e.key === "k" || e.key === "K") {
+      } else if (e.key === "k" || e.key === "K" || e.key === " ") {
+        // Space only reaches this listener when focus is on our own
+        // document (not inside the iframe) — if the user has clicked into
+        // the embedded player, keydown events there never bubble out here
+        // (cross-origin), so there's no double-toggle risk.
         if (usesAnichiBridge) {
           e.preventDefault();
           sendToPlayer({ cmd: "PLAY_TOGGLE" });
@@ -1561,42 +1456,17 @@
               </div>
             {/if}
 
-            <!-- Gesture zones for Server 1 / 4 iframe players: double-tap/double-click seek -->
-            {#if usesAnichiBridge}
-              <!-- Left Zone (Rewind 10s): leaves bottom 16 (64px) clear for native player scrubber & buttons -->
-              <div
-                class="absolute top-0 bottom-16 left-0 w-[40%] select-none touch-manipulation z-20 cursor-pointer"
-                onpointerdown={onWatchZonePointerDown}
-                onpointerup={(e) => onWatchZonePointerUp(e, "left")}
-                onclick={() => onWatchZoneClick("left")}
-                ondblclick={(e) => { e.preventDefault(); onWatchZoneDblClick("left"); }}
-                role="presentation"
-                aria-label="Double-tap or double-click to rewind 10 seconds"
-              >
-                {#if watchRippleActive === "left"}
-                  <div class="pointer-events-none absolute inset-0 flex items-center justify-start overflow-hidden">
-                    <div class="h-full w-full rounded-r-full bg-white/10 animate-ping opacity-75"></div>
-                  </div>
-                {/if}
-              </div>
-
-              <!-- Right Zone (Fast-Forward 10s): leaves bottom 16 (64px) clear for native player scrubber & buttons -->
-              <div
-                class="absolute top-0 bottom-16 right-0 w-[40%] select-none touch-manipulation z-20 cursor-pointer"
-                onpointerdown={onWatchZonePointerDown}
-                onpointerup={(e) => onWatchZonePointerUp(e, "right")}
-                onclick={() => onWatchZoneClick("right")}
-                ondblclick={(e) => { e.preventDefault(); onWatchZoneDblClick("right"); }}
-                role="presentation"
-                aria-label="Double-tap or double-click to fast forward 10 seconds"
-              >
-                {#if watchRippleActive === "right"}
-                  <div class="pointer-events-none absolute inset-0 flex items-center justify-end overflow-hidden">
-                    <div class="h-full w-full rounded-l-full bg-white/10 animate-ping opacity-75"></div>
-                  </div>
-                {/if}
-              </div>
-            {/if}
+            <!-- No click/tap-capturing overlay here on purpose: Server 1/4 are
+                 cross-origin iframes (double-nested via anichi.to.html → the
+                 upstream player), so any div covering them to detect gesture
+                 taps would also swallow every click/tap meant for the
+                 iframe's OWN controls (play/pause, settings, quality,
+                 fullscreen) — there's no way to both observe a tap AND let
+                 it reach cross-origin iframe content. That used to break
+                 exactly those controls on both mobile and desktop. Seeking
+                 is still available via the -10s/+10s buttons below and the
+                 J/L / arrow-key shortcuts (seekWatchBy), which don't need to
+                 intercept clicks over the player. -->
 
             {#if selectedServer === "embed_animekai"}
               <!-- Server 1: Persistent iframe that NEVER unmounts during episode transitions (preserves fullscreen!) -->
@@ -1851,7 +1721,7 @@
                   type="button"
                   class="inline-flex items-center gap-1 rounded-lg border border-border/80 px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground active:scale-95 transition-all cursor-pointer"
                   onclick={() => seekWatchBy(-10)}
-                  title="Rewind 10 seconds (Double-tap left or press J / Left arrow)"
+                  title="Rewind 10 seconds (J / Left arrow)"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5 scale-x-[-1]" aria-hidden="true">
                     <path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L5.055 7.06zM12.805 7.06C11.555 6.347 10 7.25 10 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L12.805 7.06z" />
@@ -1859,12 +1729,28 @@
                   <span>-10s</span>
                 </button>
 
+                <!-- Play/Pause — the embedded player's own button is often
+                     buried behind a tap-to-reveal overlay, especially on
+                     mobile; this is always reachable. -->
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-lg border border-border/80 px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground active:scale-95 transition-all cursor-pointer"
+                  onclick={() => sendToPlayer({ cmd: "PLAY_TOGGLE" })}
+                  title="Play / Pause (Space, K)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L5.055 7.06z" />
+                    <path d="M13 6a1 1 0 0 0-1 1v10a1 1 0 1 0 2 0V7a1 1 0 0 0-1-1Zm5 0a1 1 0 0 0-1 1v10a1 1 0 1 0 2 0V7a1 1 0 0 0-1-1Z" />
+                  </svg>
+                  <span>Play/Pause</span>
+                </button>
+
                 <!-- Quick Fast Forward 10s button -->
                 <button
                   type="button"
                   class="inline-flex items-center gap-1 rounded-lg border border-border/80 px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground active:scale-95 transition-all cursor-pointer"
                   onclick={() => seekWatchBy(10)}
-                  title="Fast forward 10 seconds (Double-tap right or press L / Right arrow)"
+                  title="Fast forward 10 seconds (L / Right arrow)"
                 >
                   <span>+10s</span>
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
