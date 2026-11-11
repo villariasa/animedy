@@ -41,7 +41,9 @@ export interface Env {
   JWT_SECRET: string;
   /** Optional — when set, register/login require a valid Turnstile token. */
   TURNSTILE_SECRET?: string;
-  /** Optional — when set, enables GIF search in chat (see CHAT_GIF_SEARCH_SETUP.md). */
+  /** Optional — when set, enables GIF search in chat via GIPHY. */
+  GIPHY_API_KEY?: string;
+  /** Optional — fallback/legacy GIF search via Tenor. */
   TENOR_API_KEY?: string;
 }
 

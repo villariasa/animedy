@@ -126,12 +126,13 @@ export const onRequestPost: PagesFunction = async (context) => {
   if (text.length > MAX_BODY_CHARS) return fail(`Message is too long (max ${MAX_BODY_CHARS} characters)`, 422);
   // The attachment must be either (a) one this user just uploaded via
   // POST /api/chat/upload (keyed as chat/<userId>/...) or (b) a GIF picked
-  // from the GIF search picker, which only ever returns Tenor's own CDN
+  // from the GIF search picker, which only ever returns Giphy/Tenor CDN
   // domains (see CHAT_GIF_SEARCH_SETUP.md) — prevents attaching someone
   // else's upload or an arbitrary external URL.
   const isOwnUpload = attachmentUrl.startsWith(`/api/chat/media/chat/${userId}/`);
   const isTenorGif = /^https:\/\/(media|c)\.tenor\.com\//.test(attachmentUrl);
-  if (attachmentUrl && !isOwnUpload && !isTenorGif) {
+  const isGiphyGif = /^https:\/\/(media[0-9]*|i)\.giphy\.com\//.test(attachmentUrl);
+  if (attachmentUrl && !isOwnUpload && !isTenorGif && !isGiphyGif) {
     return fail("Invalid attachment", 422);
   }
 

@@ -409,7 +409,7 @@
                   </div>
                 {/if}
               </div>
-              <p class="border-t border-border/70 px-2 py-1 text-[10px] text-muted-foreground">GIFs via Tenor</p>
+              <p class="border-t border-border/70 px-2 py-1 text-[10px] text-muted-foreground">Powered by GIPHY</p>
             </div>
           {/if}
 
