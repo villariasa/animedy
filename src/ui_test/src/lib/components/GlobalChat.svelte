@@ -7,13 +7,35 @@
   import { chat } from "$lib/stores/chat.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { router } from "$lib/router.svelte";
-  import { apiChatMute, apiChatUnmute, CHAT_ATTACHMENT_MIME_TYPES, MAX_CHAT_ATTACHMENT_BYTES } from "$lib/api/account";
+  import {
+    apiChatMute,
+    apiChatUnmute,
+    apiChatGifSearch,
+    CHAT_ATTACHMENT_MIME_TYPES,
+    MAX_CHAT_ATTACHMENT_BYTES,
+    type GifResult
+  } from "$lib/api/account";
 
   let draft = $state("");
   let feedEl = $state<HTMLDivElement | undefined>();
   let mutedNotice = $state("");
   let fileInputEl = $state<HTMLInputElement | undefined>();
   let lightboxUrl = $state<string | null>(null);
+
+  // Quick-react picker: which message (if any) currently has its emoji
+  // popover open. Common picks up top, plus a free-text field below for
+  // "any emoji" — same idea as Discord's reaction bar.
+  const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "🎉"];
+  let reactionPickerFor = $state<number | null>(null);
+  let customEmojiDraft = $state("");
+
+  // GIF picker
+  let gifPickerOpen = $state(false);
+  let gifQuery = $state("");
+  let gifResults = $state<GifResult[]>([]);
+  let gifLoading = $state(false);
+  let gifError = $state("");
+  let gifSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Hide the bubble on auth pages and while watching (it would overlap the
   // player controls; fullscreen hides it anyway).
@@ -59,6 +81,59 @@
       return;
     }
     await chat.sendAttachment(file, draft);
+    draft = "";
+  }
+
+  function toggleReactionPicker(messageId: number): void {
+    reactionPickerFor = reactionPickerFor === messageId ? null : messageId;
+    customEmojiDraft = "";
+  }
+
+  async function pickReaction(messageId: number, emoji: string): Promise<void> {
+    reactionPickerFor = null;
+    customEmojiDraft = "";
+    await chat.toggleReaction(messageId, emoji);
+  }
+
+  function submitCustomEmoji(e: SubmitEvent, messageId: number): void {
+    e.preventDefault();
+    const emoji = customEmojiDraft.trim();
+    if (!emoji) return;
+    void pickReaction(messageId, emoji);
+  }
+
+  function openGifPicker(): void {
+    gifPickerOpen = true;
+    gifError = "";
+    if (gifResults.length === 0) void runGifSearch("");
+  }
+
+  function closeGifPicker(): void {
+    gifPickerOpen = false;
+  }
+
+  async function runGifSearch(query: string): Promise<void> {
+    gifLoading = true;
+    gifError = "";
+    try {
+      const { results } = await apiChatGifSearch(query);
+      gifResults = results;
+    } catch (err) {
+      gifError = err instanceof Error ? err.message : "GIF search failed";
+      gifResults = [];
+    } finally {
+      gifLoading = false;
+    }
+  }
+
+  function onGifQueryInput(): void {
+    if (gifSearchTimer) clearTimeout(gifSearchTimer);
+    gifSearchTimer = setTimeout(() => void runGifSearch(gifQuery), 400);
+  }
+
+  async function pickGif(gif: GifResult): Promise<void> {
+    gifPickerOpen = false;
+    await chat.sendGif(gif.url, draft);
     draft = "";
   }
 
@@ -176,6 +251,71 @@
                     />
                   </button>
                 {/if}
+
+                <!-- Reaction pills -->
+                {#if msg.reactions && msg.reactions.length > 0}
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    {#each msg.reactions as r (r.emoji)}
+                      <button
+                        type="button"
+                        onclick={() => void pickReaction(msg.id, r.emoji)}
+                        disabled={!auth.isLoggedIn}
+                        class="flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-colors {auth.user && r.user_ids.includes(auth.user.id)
+                          ? 'border-primary/60 bg-primary/15 text-primary'
+                          : 'border-border/60 text-muted-foreground hover:bg-accent'}"
+                      >
+                        <span>{r.emoji}</span>
+                        <span class="text-[10px] font-semibold">{r.count}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+
+                <!-- Add-reaction trigger + popover -->
+                {#if auth.isLoggedIn}
+                  <div class="relative mt-1 inline-block">
+                    <button
+                      type="button"
+                      onclick={() => toggleReactionPicker(msg.id)}
+                      class="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 {reactionPickerFor === msg.id ? 'opacity-100' : ''}"
+                      title="Add reaction"
+                      aria-label="Add reaction"
+                    >
+                      + 😊
+                    </button>
+                    {#if reactionPickerFor === msg.id}
+                      <div class="absolute bottom-full left-0 z-10 mb-1 w-48 rounded-lg border border-border bg-popover p-2 shadow-xl">
+                        <div class="flex flex-wrap gap-1">
+                          {#each QUICK_EMOJI as e (e)}
+                            <button
+                              type="button"
+                              onclick={() => void pickReaction(msg.id, e)}
+                              class="rounded p-1 text-base hover:bg-accent"
+                            >
+                              {e}
+                            </button>
+                          {/each}
+                        </div>
+                        <form onsubmit={(e) => submitCustomEmoji(e, msg.id)} class="mt-1.5 flex gap-1">
+                          <input
+                            type="text"
+                            bind:value={customEmojiDraft}
+                            maxlength="16"
+                            placeholder="Any emoji…"
+                            class="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs outline-none focus:border-primary"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!customEmojiDraft.trim()}
+                            class="rounded bg-primary px-2 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                          >
+                            Add
+                          </button>
+                        </form>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
               </div>
               {#if auth.isAdmin && msg.user_id !== auth.user?.id}
                 <div class="hidden shrink-0 items-center gap-1 group-hover:flex">
@@ -225,11 +365,54 @@
       {/if}
 
       <!-- Composer -->
-      <div class="border-t border-border/70 p-3">
+      <div class="relative border-t border-border/70 p-3">
         {#if auth.isLoggedIn}
           {#if chat.error}
             <p class="mb-1.5 text-xs text-amber-400">{chat.error}</p>
           {/if}
+
+          <!-- GIF search panel -->
+          {#if gifPickerOpen}
+            <div class="absolute bottom-full left-3 right-3 z-10 mb-2 flex h-72 flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-xl">
+              <div class="flex items-center gap-2 border-b border-border/70 p-2">
+                <input
+                  type="text"
+                  bind:value={gifQuery}
+                  oninput={onGifQueryInput}
+                  placeholder="Search GIFs…"
+                  class="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onclick={closeGifPicker}
+                  class="rounded p-1 text-muted-foreground hover:text-foreground"
+                  aria-label="Close GIF search"><Icon name="x-mark" class="h-3.5 w-3.5" /></button>
+              </div>
+              <div class="flex-1 overflow-y-auto p-2">
+                {#if gifLoading}
+                  <p class="py-8 text-center text-xs text-muted-foreground">Searching…</p>
+                {:else if gifError}
+                  <p class="py-8 text-center text-xs text-amber-400">{gifError}</p>
+                {:else if gifResults.length === 0}
+                  <p class="py-8 text-center text-xs text-muted-foreground">No GIFs found — try another search.</p>
+                {:else}
+                  <div class="grid grid-cols-3 gap-1.5">
+                    {#each gifResults as gif (gif.id)}
+                      <button
+                        type="button"
+                        onclick={() => void pickGif(gif)}
+                        class="overflow-hidden rounded-md border border-border/60 hover:border-primary"
+                      >
+                        <img src={gif.preview_url} alt="GIF" loading="lazy" class="h-20 w-full object-cover" />
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+              <p class="border-t border-border/70 px-2 py-1 text-[10px] text-muted-foreground">GIFs via Tenor</p>
+            </div>
+          {/if}
+
           <form class="flex gap-2" onsubmit={submit}>
             <input
               bind:this={fileInputEl}
@@ -242,8 +425,8 @@
               type="button"
               onclick={() => fileInputEl?.click()}
               disabled={chat.uploading}
-              title="Send an image or GIF"
-              aria-label="Send an image or GIF"
+              title="Send an image"
+              aria-label="Send an image"
               class="flex shrink-0 items-center justify-center rounded-lg border border-border px-2.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
             >
               {#if chat.uploading}
@@ -251,6 +434,17 @@
               {:else}
                 <Icon name="photo" class="h-4 w-4" />
               {/if}
+            </button>
+            <button
+              type="button"
+              onclick={() => (gifPickerOpen ? closeGifPicker() : openGifPicker())}
+              title="Search and send a GIF"
+              aria-label="Search and send a GIF"
+              class="flex shrink-0 items-center justify-center rounded-lg border px-2 text-[11px] font-bold tracking-tight transition-colors {gifPickerOpen
+                ? 'border-primary bg-primary/15 text-primary'
+                : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'}"
+            >
+              GIF
             </button>
             <input
               type="text"

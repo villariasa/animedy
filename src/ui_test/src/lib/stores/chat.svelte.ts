@@ -7,6 +7,7 @@ import {
   apiChatSend,
   apiChatDelete,
   apiChatTyping,
+  apiChatReact,
   apiUploadChatAttachment,
   hasToken,
   loadStoredUser,
@@ -123,8 +124,20 @@ class ChatStore {
   }
 
   private merge(incoming: ChatMessage[]): void {
-    const known = new Set(this.messages.map((m) => m.id));
-    const fresh = incoming.filter((m) => !known.has(m.id));
+    const byId = new Map(this.messages.map((m) => [m.id, m]));
+    const fresh: ChatMessage[] = [];
+    for (const msg of incoming) {
+      const existing = byId.get(msg.id);
+      if (existing) {
+        // Already have this message — refresh the fields that change after
+        // the fact (reactions, mute status) in place so Svelte's deep
+        // reactivity on $state picks it up without re-sorting the array.
+        existing.is_muted = msg.is_muted;
+        existing.reactions = msg.reactions;
+      } else {
+        fresh.push(msg);
+      }
+    }
     if (fresh.length === 0) return;
     this.messages = [...this.messages, ...fresh]
       .sort((a, b) => a.id - b.id)
@@ -174,6 +187,38 @@ class ChatStore {
     } finally {
       this.uploading = false;
     }
+  }
+
+  /** Send a GIF picked from the GIF search picker (see CHAT_GIF_SEARCH_SETUP.md) —
+   * the URL already points at Tenor's CDN, no upload needed. */
+  async sendGif(gifUrl: string, caption = ""): Promise<boolean> {
+    return this.send(caption, { url: gifUrl, type: "image/gif" });
+  }
+
+  /** Toggle an emoji reaction on a message — optimistic; any drift from the
+   * server (e.g. someone else reacted at the same time) self-corrects on
+   * the next poll via merge(). */
+  async toggleReaction(messageId: number, emoji: string): Promise<void> {
+    const me = loadStoredUser()?.id;
+    if (!me) return;
+    const msg = this.messages.find((m) => m.id === messageId);
+    if (!msg) return;
+
+    const reactions = (msg.reactions ?? []).map((r) => ({ ...r, user_ids: [...r.user_ids] }));
+    const existing = reactions.find((r) => r.emoji === emoji);
+    if (existing && existing.user_ids.includes(me)) {
+      existing.user_ids = existing.user_ids.filter((id) => id !== me);
+      existing.count = existing.user_ids.length;
+      msg.reactions = reactions.filter((r) => r.count > 0);
+    } else if (existing) {
+      existing.user_ids.push(me);
+      existing.count = existing.user_ids.length;
+      msg.reactions = reactions;
+    } else {
+      msg.reactions = [...reactions, { emoji, count: 1, user_ids: [me] }];
+    }
+
+    await apiChatReact(messageId, emoji).catch(() => undefined);
   }
 
   /** Admin: soft-delete a message (optimistically removed from the feed). */

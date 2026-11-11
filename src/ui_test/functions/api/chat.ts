@@ -6,6 +6,12 @@ const MAX_BODY_CHARS = 500;
 const RATE_LIMIT_MS = 2_000;
 const PAGE_SIZE = 50;
 
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  user_ids: number[];
+}
+
 export interface ChatMessageRow {
   id: number;
   user_id: number;
@@ -16,6 +22,7 @@ export interface ChatMessageRow {
   attachment_type?: string | null;
   created_at: string;
   is_muted?: number | null;
+  reactions?: ChatReaction[];
 }
 
 /**
@@ -60,13 +67,38 @@ export const onRequestGet: PagesFunction = async (context) => {
     )
     .all<{ username: string }>();
 
+  // Reaction counts per message. Returned as raw user_ids (not a "did I
+  // react" boolean) so this stays pure/anonymous-safe to CDN-cache by URL —
+  // the client determines "is this mine" locally by checking its own user id
+  // against the list, same as it already knows its own messages.
+  const messageIds = rows.map((r) => r.id);
+  const reactionsByMessage = new Map<number, ChatReaction[]>();
+  if (messageIds.length > 0) {
+    const placeholders = messageIds.map(() => "?").join(",");
+    const reactionRows = await db
+      .prepare(
+        `SELECT message_id, emoji, COUNT(*) as count, GROUP_CONCAT(user_id) as user_ids
+         FROM chat_message_reactions WHERE message_id IN (${placeholders})
+         GROUP BY message_id, emoji
+         ORDER BY MIN(created_at) ASC`
+      )
+      .bind(...messageIds)
+      .all<{ message_id: number; emoji: string; count: number; user_ids: string }>();
+    for (const r of reactionRows.results) {
+      const list = reactionsByMessage.get(r.message_id) ?? [];
+      list.push({ emoji: r.emoji, count: r.count, user_ids: r.user_ids.split(",").map(Number) });
+      reactionsByMessage.set(r.message_id, list);
+    }
+  }
+  const messages = rows.map((r) => ({ ...r, reactions: reactionsByMessage.get(r.id) ?? [] }));
+
   return Response.json(
     {
       success: true,
       http_code: 200,
       message: "Messages retrieved",
       data: {
-        messages: rows,
+        messages,
         latest_id: rows.length > 0 ? rows[rows.length - 1].id : (since ?? 0),
         typing: typing.results.map((t) => t.username),
       },
@@ -92,10 +124,14 @@ export const onRequestPost: PagesFunction = async (context) => {
 
   if (!text && !attachmentUrl) return fail("Message is empty", 422);
   if (text.length > MAX_BODY_CHARS) return fail(`Message is too long (max ${MAX_BODY_CHARS} characters)`, 422);
-  // The attachment must be one this user just uploaded via POST /api/chat/upload
-  // (that endpoint keys objects as chat/<userId>/...) — prevents attaching
-  // someone else's or an arbitrary external URL.
-  if (attachmentUrl && !attachmentUrl.startsWith(`/api/chat/media/chat/${userId}/`)) {
+  // The attachment must be either (a) one this user just uploaded via
+  // POST /api/chat/upload (keyed as chat/<userId>/...) or (b) a GIF picked
+  // from the GIF search picker, which only ever returns Tenor's own CDN
+  // domains (see CHAT_GIF_SEARCH_SETUP.md) — prevents attaching someone
+  // else's upload or an arbitrary external URL.
+  const isOwnUpload = attachmentUrl.startsWith(`/api/chat/media/chat/${userId}/`);
+  const isTenorGif = /^https:\/\/(media|c)\.tenor\.com\//.test(attachmentUrl);
+  if (attachmentUrl && !isOwnUpload && !isTenorGif) {
     return fail("Invalid attachment", 422);
   }
 
@@ -146,6 +182,7 @@ export const onRequestPost: PagesFunction = async (context) => {
     attachment_url: attachmentUrl || null,
     attachment_type: attachmentType || null,
     created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+    reactions: [],
   };
   return ok({ message }, "Message sent", 201);
 };

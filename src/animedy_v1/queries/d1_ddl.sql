@@ -400,3 +400,22 @@ CREATE TABLE IF NOT EXISTS verify_nonces (
 -- ============================================================
 ALTER TABLE chat_messages ADD COLUMN attachment_url TEXT;
 ALTER TABLE chat_messages ADD COLUMN attachment_type TEXT;
+
+-- ============================================================
+-- 24. chat_message_reactions (Discord-style emoji reactions —
+--     see REACTIONS_SETUP.md. Any emoji, not a fixed set; one row
+--     per (message, user, emoji) so a user can stack several
+--     different emoji on the same message but not the same one twice.)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_message_reactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  emoji TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (message_id, user_id, emoji),
+  FOREIGN KEY (message_id) REFERENCES chat_messages (id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_reactions_message ON chat_message_reactions (message_id);

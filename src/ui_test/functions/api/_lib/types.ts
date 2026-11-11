@@ -41,6 +41,8 @@ export interface Env {
   JWT_SECRET: string;
   /** Optional — when set, register/login require a valid Turnstile token. */
   TURNSTILE_SECRET?: string;
+  /** Optional — when set, enables GIF search in chat (see CHAT_GIF_SEARCH_SETUP.md). */
+  TENOR_API_KEY?: string;
 }
 
 export interface PagesContext<P = Record<string, string>> {

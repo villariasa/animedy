@@ -625,6 +625,12 @@ export function apiDeleteAnnouncement(id: number): Promise<unknown> {
 
 // ---------- global chat ----------
 
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  user_ids: number[];
+}
+
 export interface ChatMessage {
   id: number;
   user_id: number;
@@ -635,6 +641,7 @@ export interface ChatMessage {
   attachment_type?: string | null;
   created_at: string;
   is_muted?: number | null;
+  reactions?: ChatReaction[];
 }
 
 export function apiChatFetch(
@@ -713,6 +720,25 @@ export async function apiUploadChatAttachment(file: File): Promise<{ url: string
 
 export function apiChatDelete(messageId: number): Promise<unknown> {
   return request(`/api/admin/chat/${messageId}`, { method: "DELETE" });
+}
+
+export function apiChatReact(messageId: number, emoji: string): Promise<{ reacted: boolean; emoji: string }> {
+  return request(`/api/chat/${messageId}/react`, { method: "POST", body: { emoji } });
+}
+
+// ---------- chat GIF search (see CHAT_GIF_SEARCH_SETUP.md) ----------
+
+export interface GifResult {
+  id: string;
+  url: string;
+  preview_url: string;
+  width: number;
+  height: number;
+}
+
+export function apiChatGifSearch(query: string): Promise<{ results: GifResult[] }> {
+  const q = query.trim();
+  return request(`/api/chat/gif-search${q ? `?q=${encodeURIComponent(q)}` : ""}`);
 }
 
 export function apiChatMute(userId: number, hours?: number, reason?: string): Promise<unknown> {

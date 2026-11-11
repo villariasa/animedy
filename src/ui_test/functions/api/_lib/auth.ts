@@ -148,6 +148,20 @@ export async function requireAuth(
   return { claims };
 }
 
+/** Like requireAuth, but never fails — returns null when there's no/invalid
+ * token instead of a 401. Used by public endpoints (e.g. GET /api/chat) that
+ * want to personalize the response (e.g. "did I already react to this") for
+ * signed-in callers without requiring sign-in to read. */
+export async function getOptionalAuth(
+  context: PagesContext<Record<string, string>>
+): Promise<JwtClaims | null> {
+  const env: Env = context.env;
+  if (!env.JWT_SECRET) return null;
+  const header = context.request.headers.get("Authorization");
+  if (!header || !header.startsWith("Bearer ")) return null;
+  return await verifyToken(header.slice("Bearer ".length).trim(), env.JWT_SECRET);
+}
+
 export async function requireAdmin(
   context: PagesContext<Record<string, string>>
 ): Promise<{ claims: JwtClaims } | { response: Response }> {
