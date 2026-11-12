@@ -242,3 +242,4 @@ Response: `{ success, http_code, message, data }`. Each endpoint has a dedicated
 - Video transcoding/upload pipeline (operator hosts files and registers URLs via admin endpoint).
 - Generic taste-based recommendations (engine is continuation-only).
 - Comments, ratings, social features.
+- hoping to have my own vid domains 
