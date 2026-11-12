@@ -52,3 +52,4 @@ Never invent other layouts; never relocate files across these folders without us
 - Every completed endpoint needs Jest/Supertest coverage (success, Zod validation failure, auth failure) before its task is marked done
 - External API fixtures: Bleach / Naruto / Attack on Titan franchise graphs
 - Sample data sourced from the real affected DB tables where a live DB is available
+- standard coding convention by me 
