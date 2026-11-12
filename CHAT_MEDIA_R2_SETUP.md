@@ -94,3 +94,6 @@ The upload endpoint re-derives the object key server-side and the send
 endpoint checks `attachment_url` starts with `/api/chat/media/chat/<the
 sender's own userId>/` — so a user can only attach something they just
 uploaded themselves, never an arbitrary URL or someone else's file.
+
+
+i hope to plan another next time 
