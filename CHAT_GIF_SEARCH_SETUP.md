@@ -41,3 +41,6 @@ The `GIPHY_API_KEY` secret is configured in:
 | Results per search | 24 | `RESULT_LIMIT` in `gif-search.ts` |
 | Rating filter | `g` (general audience) | `rating=g` query param |
 | Attachment URL accepted on send | must be user's R2 upload or `*.giphy.com` / `*.tenor.com` | `functions/api/chat.ts` `POST` handler |
+
+
+pls suggest me anytime what intereactive giphy will going to add 
