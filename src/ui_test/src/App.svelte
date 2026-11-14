@@ -16,6 +16,7 @@
   import DiscoveryNotifier from "$lib/components/DiscoveryNotifier.svelte";
   import NotificationPrompt from "$lib/components/NotificationPrompt.svelte";
   import AmbientBackground from "$lib/components/AmbientBackground.svelte";
+  import ChristmasDecorations from "$lib/components/christmas/ChristmasDecorations.svelte";
   import MobileNavDrawer from "$lib/components/MobileNavDrawer.svelte";
   import NotificationBell from "$lib/components/NotificationBell.svelte";
   import MoreMenu from "$lib/components/MoreMenu.svelte";
@@ -81,6 +82,7 @@
 {:else}
 <div class="dark flex min-h-dvh flex-col bg-background text-foreground">
   <AmbientBackground />
+  <ChristmasDecorations />
   <MobileNavDrawer bind:isOpen={isMobileMenuOpen} />
   <header class="sticky top-0 z-40 flex items-center justify-between gap-2 sm:gap-4 border-b border-border/80 bg-background/95 px-3 sm:px-6 py-2.5 backdrop-blur-md">
     <!-- Logo & Home icon (hidden on mobile when search is actively expanded) -->
