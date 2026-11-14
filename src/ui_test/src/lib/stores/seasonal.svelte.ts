@@ -1,60 +1,39 @@
 /**
- * Seasonal holiday decoration manager.
- * 
- * Automatically activates during the holiday season (Dec 1 through Jan 7)
- * while allowing users to override (Always On / Off / Auto) via settings or local storage.
+ * Admin-controlled Christmas & Holiday Seasonal Theme.
+ *
+ * Enabled by default across the entire website so all visitors experience
+ * the festive holiday decorations immediately.
+ * Only administrators can disable or enable this theme via the Admin panel.
  */
 
-const STORAGE_KEY = "animedy.seasonal_decorations";
+const ADMIN_STORAGE_KEY = "animedy.admin_christmas_theme";
 
-export type HolidayPreference = "auto" | "on" | "off";
-
-function getStoredPreference(): HolidayPreference {
-  if (typeof localStorage === "undefined") return "auto";
+function getAdminHolidaySetting(): boolean {
+  if (typeof localStorage === "undefined") return true;
   try {
-    const val = localStorage.getItem(STORAGE_KEY);
-    if (val === "on" || val === "off" || val === "auto") {
-      return val;
+    const val = localStorage.getItem(ADMIN_STORAGE_KEY);
+    if (val === "false" || val === "disabled") {
+      return false;
     }
   } catch {
-    // fallback
+    // default to true
   }
-  return "auto";
-}
-
-/**
- * Returns true if the current date falls between Dec 1 and Jan 7 (inclusive).
- */
-export function isHolidaySeasonDate(now = new Date()): boolean {
-  const month = now.getMonth(); // 0-indexed: 11 = December, 0 = January
-  const date = now.getDate();
-  if (month === 11) {
-    // December 1-31
-    return true;
-  }
-  if (month === 0 && date <= 7) {
-    // January 1-7
-    return true;
-  }
-  return false;
+  return true;
 }
 
 class SeasonalStore {
-  preference = $state<HolidayPreference>(getStoredPreference());
+  // Enabled by default for all visitors
+  enabled = $state<boolean>(getAdminHolidaySetting());
+
+  isActive = $derived(this.enabled);
 
   /**
-   * Whether the Christmas / Holiday decorations should be displayed.
+   * Only admin can toggle the site-wide Christmas theme.
    */
-  isActive = $derived.by(() => {
-    if (this.preference === "on") return true;
-    if (this.preference === "off") return false;
-    return isHolidaySeasonDate();
-  });
-
-  setPreference(pref: HolidayPreference): void {
-    this.preference = pref;
+  setAdminEnabled(enabled: boolean): void {
+    this.enabled = enabled;
     try {
-      localStorage.setItem(STORAGE_KEY, pref);
+      localStorage.setItem(ADMIN_STORAGE_KEY, enabled ? "true" : "false");
     } catch {
       // storage unavailable
     }
@@ -62,4 +41,3 @@ class SeasonalStore {
 }
 
 export const seasonal = new SeasonalStore();
-

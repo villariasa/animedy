@@ -1,216 +1,207 @@
 <script lang="ts">
 </script>
 
-<!-- Top-Left Pine Branch with Snow & Bauble -->
+<!-- Top-Left Pine Branch with Snow & Bauble (z-45 so it is visible, pointer-events-none so logo clicks pass right through) -->
 <div
-  class="pointer-events-none fixed top-0 left-0 z-20 w-28 sm:w-44 select-none opacity-85 transition-opacity duration-300"
+  class="pointer-events-none fixed top-0 left-0 z-45 w-36 sm:w-52 select-none overflow-visible"
   aria-hidden="true"
 >
   <svg
-    viewBox="0 0 190 120"
+    viewBox="0 0 210 135"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
     class="w-full h-auto overflow-visible branch-sway"
   >
     <defs>
-      <!-- Bauble metallic gradient -->
-      <radialGradient id="ruby-bauble" cx="35%" cy="30%" r="70%">
+      <!-- Bauble metallic ruby gradient -->
+      <radialGradient id="corner-ruby-bauble" cx="35%" cy="30%" r="70%">
         <stop offset="0%" stop-color="#ff7b88" />
-        <stop offset="35%" stop-color="#c92837" />
-        <stop offset="85%" stop-color="#690e18" />
-        <stop offset="100%" stop-color="#3d050c" />
+        <stop offset="35%" stop-color="#e6192d" />
+        <stop offset="85%" stop-color="#7a0a16" />
+        <stop offset="100%" stop-color="#3b030a" />
       </radialGradient>
-      <!-- Bauble cap gradient -->
-      <linearGradient id="gold-cap" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#fceda4" />
-        <stop offset="50%" stop-color="#c49a37" />
-        <stop offset="100%" stop-color="#634a10" />
+      <!-- Gold cap gradient -->
+      <linearGradient id="corner-gold-cap" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#fff2b3" />
+        <stop offset="50%" stop-color="#d4af37" />
+        <stop offset="100%" stop-color="#735c12" />
       </linearGradient>
-      <!-- Drop shadow -->
-      <filter id="branch-shadow" x="-10%" y="-10%" width="130%" height="130%">
-        <feDropShadow dx="1" dy="2" stdDeviation="2.5" flood-opacity="0.45" flood-color="#000" />
+      <!-- Realistic branch shadow -->
+      <filter id="corner-branch-shadow" x="-15%" y="-15%" width="135%" height="135%">
+        <feDropShadow dx="2" dy="3" stdDeviation="3" flood-opacity="0.65" flood-color="#000" />
       </filter>
     </defs>
 
-    <g filter="url(#branch-shadow)">
+    <g filter="url(#corner-branch-shadow)">
       <!-- Main Wood Stems -->
-      <path d="M -5 -5 Q 50 15 110 32" stroke="#2a1f18" stroke-width="3" stroke-linecap="round" />
-      <path d="M 40 12 Q 75 35 125 52" stroke="#2a1f18" stroke-width="2" stroke-linecap="round" />
-      <path d="M 20 8 Q 45 45 80 72" stroke="#2a1f18" stroke-width="2" stroke-linecap="round" />
+      <path d="M -10 -10 Q 55 18 125 36" stroke="#231710" stroke-width="3.5" stroke-linecap="round" />
+      <path d="M 45 14 Q 85 40 140 58" stroke="#231710" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M 22 10 Q 50 50 90 82" stroke="#231710" stroke-width="2.5" stroke-linecap="round" />
 
       <!-- Deep Background Spruce Needles (Dark Forest Green) -->
-      <g stroke="#142b1a" stroke-width="1.8" stroke-linecap="round">
-        <line x1="20" y1="2" x2="45" y2="28" />
-        <line x1="32" y1="5" x2="62" y2="35" />
-        <line x1="48" y1="12" x2="82" y2="44" />
-        <line x1="68" y1="18" x2="105" y2="48" />
-        <line x1="88" y1="24" x2="128" y2="42" />
-        <line x1="102" y1="30" x2="148" y2="45" />
+      <g stroke="#0f2415" stroke-width="2.2" stroke-linecap="round">
+        <line x1="22" y1="2" x2="52" y2="32" />
+        <line x1="36" y1="6" x2="70" y2="40" />
+        <line x1="55" y1="14" x2="94" y2="50" />
+        <line x1="78" y1="20" x2="118" y2="54" />
+        <line x1="100" y1="28" x2="145" y2="48" />
+        <line x1="116" y1="34" x2="168" y2="52" />
 
-        <line x1="25" y1="18" x2="55" y2="62" />
-        <line x1="42" y1="32" x2="78" y2="82" />
-        <line x1="60" y1="48" x2="98" y2="92" />
-        <line x1="8" y1="12" x2="30" y2="52" />
+        <line x1="28" y1="20" x2="62" y2="70" />
+        <line x1="48" y1="36" x2="88" y2="94" />
+        <line x1="68" y1="54" x2="110" y2="105" />
+        <line x1="10" y1="14" x2="34" y2="60" />
       </g>
 
-      <!-- Mid-layer Pine Needles (Natural Pine Green) -->
-      <g stroke="#1e4428" stroke-width="1.6" stroke-linecap="round">
-        <line x1="18" y1="0" x2="42" y2="22" />
-        <line x1="30" y1="4" x2="58" y2="28" />
-        <line x1="45" y1="10" x2="78" y2="38" />
-        <line x1="62" y1="15" x2="98" y2="42" />
-        <line x1="82" y1="22" x2="120" y2="38" />
-        <line x1="95" y1="28" x2="138" y2="40" />
+      <!-- Mid-layer Pine Needles (Vibrant Forest Green) -->
+      <g stroke="#1b4526" stroke-width="1.8" stroke-linecap="round">
+        <line x1="20" y1="0" x2="48" y2="26" />
+        <line x1="34" y1="5" x2="66" y2="32" />
+        <line x1="52" y1="12" x2="88" y2="44" />
+        <line x1="70" y1="18" x2="110" y2="48" />
+        <line x1="92" y1="25" x2="135" y2="44" />
+        <line x1="108" y1="32" x2="155" y2="46" />
 
-        <line x1="22" y1="15" x2="50" y2="55" />
-        <line x1="38" y1="28" x2="72" y2="72" />
-        <line x1="55" y1="42" x2="90" y2="82" />
+        <line x1="25" y1="18" x2="58" y2="62" />
+        <line x1="44" y1="32" x2="82" y2="82" />
+        <line x1="62" y1="48" x2="102" y2="94" />
       </g>
 
-      <!-- Foreground Pine Needles (Spruce Highlights) -->
-      <g stroke="#2d5e38" stroke-width="1.3" stroke-linecap="round">
-        <line x1="24" y1="2" x2="46" y2="20" />
-        <line x1="40" y1="8" x2="68" y2="28" />
-        <line x1="58" y1="14" x2="90" y2="36" />
-        <line x1="78" y1="20" x2="112" y2="36" />
-        <line x1="92" y1="25" x2="126" y2="38" />
+      <!-- Foreground Highlights (Pine Spruce) -->
+      <g stroke="#2a6639" stroke-width="1.5" stroke-linecap="round">
+        <line x1="28" y1="3" x2="52" y2="24" />
+        <line x1="45" y1="9" x2="76" y2="32" />
+        <line x1="65" y1="16" x2="102" y2="42" />
+        <line x1="88" y1="23" x2="126" y2="42" />
+        <line x1="104" y1="29" x2="142" y2="44" />
       </g>
 
-      <!-- Soft Natural Snow Dusting on Upper Needles -->
+      <!-- Heavy Soft Snow Layer on Top of Branches -->
       <path
-        d="M -5 0 Q 30 10 65 24 Q 95 30 135 38"
-        stroke="#eef4f8"
+        d="M -10 -5 Q 35 12 75 28 Q 110 35 155 44"
+        stroke="#ffffff"
+        stroke-width="3.8"
+        stroke-linecap="round"
+      />
+      <path
+        d="M 28 12 Q 62 28 98 52"
+        stroke="#ffffff"
         stroke-width="3"
         stroke-linecap="round"
-        opacity="0.92"
       />
       <path
-        d="M 25 10 Q 55 24 85 45"
-        stroke="#eef4f8"
-        stroke-width="2.2"
+        d="M 14 20 Q 40 44 70 70"
+        stroke="#ffffff"
+        stroke-width="2.8"
         stroke-linecap="round"
-        opacity="0.88"
-      />
-      <path
-        d="M 12 18 Q 35 38 60 62"
-        stroke="#eef4f8"
-        stroke-width="2.2"
-        stroke-linecap="round"
-        opacity="0.85"
       />
 
-      <!-- Delicate Snow Caps -->
-      <ellipse cx="48" cy="18" rx="8" ry="3.5" fill="#f8fafc" opacity="0.95" />
-      <ellipse cx="86" cy="29" rx="10" ry="3.5" fill="#f8fafc" opacity="0.95" />
-      <ellipse cx="122" cy="38" rx="7" ry="2.8" fill="#f8fafc" opacity="0.92" />
-      <ellipse cx="40" cy="38" rx="7" ry="3" fill="#f8fafc" opacity="0.9" />
-      <ellipse cx="68" cy="62" rx="6" ry="2.5" fill="#f8fafc" opacity="0.88" />
+      <!-- Organic Snow Caps / Mounds -->
+      <ellipse cx="54" cy="21" rx="10" ry="4.5" fill="#ffffff" />
+      <ellipse cx="98" cy="33" rx="12" ry="4.5" fill="#ffffff" />
+      <ellipse cx="140" cy="44" rx="9" ry="3.8" fill="#ffffff" />
+      <ellipse cx="46" cy="44" rx="9" ry="4" fill="#ffffff" />
+      <ellipse cx="78" cy="72" rx="8" ry="3.5" fill="#ffffff" />
 
       <!-- Hanging Crimson Glass Bauble -->
-      <!-- Gold hanging thread -->
-      <line x1="72" y1="36" x2="72" y2="60" stroke="#c49a37" stroke-width="0.75" />
+      <line x1="82" y1="42" x2="82" y2="72" stroke="#d4af37" stroke-width="1" />
       <!-- Bauble cap -->
-      <rect x="69" y="58" width="6" height="3" rx="1" fill="url(#gold-cap)" />
+      <rect x="78" y="70" width="8" height="4" rx="1.5" fill="url(#corner-gold-cap)" />
       <!-- Bauble sphere -->
-      <circle cx="72" cy="73" r="12" fill="url(#ruby-bauble)" />
-      <!-- Spherical glass specular reflection -->
-      <ellipse cx="68" cy="68" rx="4" ry="2.5" fill="#ffffff" opacity="0.65" transform="rotate(-30 68 68)" />
-      <!-- Subtle rim glow -->
-      <circle cx="72" cy="73" r="11" fill="none" stroke="#ff8591" stroke-width="0.8" opacity="0.4" />
+      <circle cx="82" cy="88" r="15" fill="url(#corner-ruby-bauble)" />
+      <!-- Specular shine -->
+      <ellipse cx="77" cy="82" rx="5" ry="3" fill="#ffffff" opacity="0.8" transform="rotate(-30 77 82)" />
+      <circle cx="82" cy="88" r="14" fill="none" stroke="#ff7b88" stroke-width="1" opacity="0.5" />
     </g>
   </svg>
 </div>
 
-<!-- Top-Right Pine Branch with Snow & Champagne Bauble -->
+<!-- Top-Right Pine Branch with Snow & Champagne Bauble (z-45) -->
 <div
-  class="pointer-events-none fixed top-0 right-0 z-20 w-28 sm:w-44 select-none opacity-85 transition-opacity duration-300"
+  class="pointer-events-none fixed top-0 right-0 z-45 w-36 sm:w-52 select-none overflow-visible"
   aria-hidden="true"
 >
   <svg
-    viewBox="0 0 190 120"
+    viewBox="0 0 210 135"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
     class="w-full h-auto overflow-visible branch-sway-alt scale-x-[-1]"
   >
     <defs>
-      <!-- Champagne gold metallic gradient -->
-      <radialGradient id="gold-bauble" cx="35%" cy="30%" r="70%">
-        <stop offset="0%" stop-color="#fff5cc" />
-        <stop offset="30%" stop-color="#e0b852" />
-        <stop offset="75%" stop-color="#946a1a" />
-        <stop offset="100%" stop-color="#473105" />
+      <!-- Bauble metallic gold gradient -->
+      <radialGradient id="corner-gold-bauble" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#fff8d6" />
+        <stop offset="30%" stop-color="#f0c348" />
+        <stop offset="75%" stop-color="#a67c1e" />
+        <stop offset="100%" stop-color="#4a3507" />
       </radialGradient>
     </defs>
 
-    <g filter="url(#branch-shadow)">
+    <g filter="url(#corner-branch-shadow)">
       <!-- Main Wood Stems -->
-      <path d="M -5 -5 Q 50 15 110 32" stroke="#2a1f18" stroke-width="3" stroke-linecap="round" />
-      <path d="M 40 12 Q 75 35 125 52" stroke="#2a1f18" stroke-width="2" stroke-linecap="round" />
-      <path d="M 20 8 Q 45 45 80 72" stroke="#2a1f18" stroke-width="2" stroke-linecap="round" />
+      <path d="M -10 -10 Q 55 18 125 36" stroke="#231710" stroke-width="3.5" stroke-linecap="round" />
+      <path d="M 45 14 Q 85 40 140 58" stroke="#231710" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M 22 10 Q 50 50 90 82" stroke="#231710" stroke-width="2.5" stroke-linecap="round" />
 
       <!-- Needles -->
-      <g stroke="#142b1a" stroke-width="1.8" stroke-linecap="round">
-        <line x1="20" y1="2" x2="45" y2="28" />
-        <line x1="32" y1="5" x2="62" y2="35" />
-        <line x1="48" y1="12" x2="82" y2="44" />
-        <line x1="68" y1="18" x2="105" y2="48" />
-        <line x1="88" y1="24" x2="128" y2="42" />
-        <line x1="102" y1="30" x2="148" y2="45" />
+      <g stroke="#0f2415" stroke-width="2.2" stroke-linecap="round">
+        <line x1="22" y1="2" x2="52" y2="32" />
+        <line x1="36" y1="6" x2="70" y2="40" />
+        <line x1="55" y1="14" x2="94" y2="50" />
+        <line x1="78" y1="20" x2="118" y2="54" />
+        <line x1="100" y1="28" x2="145" y2="48" />
+        <line x1="116" y1="34" x2="168" y2="52" />
 
-        <line x1="25" y1="18" x2="55" y2="62" />
-        <line x1="42" y1="32" x2="78" y2="82" />
-        <line x1="60" y1="48" x2="98" y2="92" />
+        <line x1="28" y1="20" x2="62" y2="70" />
+        <line x1="48" y1="36" x2="88" y2="94" />
+        <line x1="68" y1="54" x2="110" y2="105" />
       </g>
 
-      <g stroke="#1e4428" stroke-width="1.6" stroke-linecap="round">
-        <line x1="18" y1="0" x2="42" y2="22" />
-        <line x1="30" y1="4" x2="58" y2="28" />
-        <line x1="45" y1="10" x2="78" y2="38" />
-        <line x1="62" y1="15" x2="98" y2="42" />
-        <line x1="82" y1="22" x2="120" y2="38" />
-        <line x1="95" y1="28" x2="138" y2="40" />
+      <g stroke="#1b4526" stroke-width="1.8" stroke-linecap="round">
+        <line x1="20" y1="0" x2="48" y2="26" />
+        <line x1="34" y1="5" x2="66" y2="32" />
+        <line x1="52" y1="12" x2="88" y2="44" />
+        <line x1="70" y1="18" x2="110" y2="48" />
+        <line x1="92" y1="25" x2="135" y2="44" />
+        <line x1="108" y1="32" x2="155" y2="46" />
 
-        <line x1="22" y1="15" x2="50" y2="55" />
-        <line x1="38" y1="28" x2="72" y2="72" />
-        <line x1="55" y1="42" x2="90" y2="82" />
+        <line x1="25" y1="18" x2="58" y2="62" />
+        <line x1="44" y1="32" x2="82" y2="82" />
+        <line x1="62" y1="48" x2="102" y2="94" />
       </g>
 
-      <g stroke="#2d5e38" stroke-width="1.3" stroke-linecap="round">
-        <line x1="24" y1="2" x2="46" y2="20" />
-        <line x1="40" y1="8" x2="68" y2="28" />
-        <line x1="58" y1="14" x2="90" y2="36" />
-        <line x1="78" y1="20" x2="112" y2="36" />
-        <line x1="92" y1="25" x2="126" y2="38" />
+      <g stroke="#2a6639" stroke-width="1.5" stroke-linecap="round">
+        <line x1="28" y1="3" x2="52" y2="24" />
+        <line x1="45" y1="9" x2="76" y2="32" />
+        <line x1="65" y1="16" x2="102" y2="42" />
+        <line x1="88" y1="23" x2="126" y2="42" />
       </g>
 
       <!-- Snow Dusting -->
       <path
-        d="M -5 0 Q 30 10 65 24 Q 95 30 135 38"
-        stroke="#eef4f8"
-        stroke-width="3"
+        d="M -10 -5 Q 35 12 75 28 Q 110 35 155 44"
+        stroke="#ffffff"
+        stroke-width="3.8"
         stroke-linecap="round"
-        opacity="0.92"
       />
       <path
-        d="M 25 10 Q 55 24 85 45"
-        stroke="#eef4f8"
-        stroke-width="2.2"
+        d="M 28 12 Q 62 28 98 52"
+        stroke="#ffffff"
+        stroke-width="3"
         stroke-linecap="round"
-        opacity="0.88"
       />
 
-      <!-- Snow Caps -->
-      <ellipse cx="48" cy="18" rx="8" ry="3.5" fill="#f8fafc" opacity="0.95" />
-      <ellipse cx="86" cy="29" rx="10" ry="3.5" fill="#f8fafc" opacity="0.95" />
-      <ellipse cx="122" cy="38" rx="7" ry="2.8" fill="#f8fafc" opacity="0.92" />
-      <ellipse cx="40" cy="38" rx="7" ry="3" fill="#f8fafc" opacity="0.9" />
+      <ellipse cx="54" cy="21" rx="10" ry="4.5" fill="#ffffff" />
+      <ellipse cx="98" cy="33" rx="12" ry="4.5" fill="#ffffff" />
+      <ellipse cx="140" cy="44" rx="9" ry="3.8" fill="#ffffff" />
+      <ellipse cx="46" cy="44" rx="9" ry="4" fill="#ffffff" />
 
-      <!-- Hanging Champagne Glass Bauble -->
-      <line x1="75" y1="38" x2="75" y2="58" stroke="#c49a37" stroke-width="0.75" />
-      <rect x="72" y="56" width="6" height="3" rx="1" fill="url(#gold-cap)" />
-      <circle cx="75" cy="71" r="11" fill="url(#gold-bauble)" />
-      <ellipse cx="71" cy="66" rx="3.5" ry="2.2" fill="#ffffff" opacity="0.7" transform="rotate(-30 71 66)" />
-      <circle cx="75" cy="71" r="10" fill="none" stroke="#fff0b3" stroke-width="0.8" opacity="0.4" />
+      <!-- Hanging Champagne Gold Bauble -->
+      <line x1="85" y1="45" x2="85" y2="70" stroke="#d4af37" stroke-width="1" />
+      <rect x="81" y="68" width="8" height="4" rx="1.5" fill="url(#corner-gold-cap)" />
+      <circle cx="85" cy="85" r="14" fill="url(#corner-gold-bauble)" />
+      <ellipse cx="80" cy="79" rx="4.5" ry="2.8" fill="#ffffff" opacity="0.85" transform="rotate(-30 80 79)" />
+      <circle cx="85" cy="85" r="13" fill="none" stroke="#fff0b3" stroke-width="1" opacity="0.5" />
     </g>
   </svg>
 </div>
@@ -218,20 +209,20 @@
 <style>
   .branch-sway {
     transform-origin: 0% 0%;
-    animation: slow-sway 7.5s ease-in-out infinite alternate;
+    animation: corner-sway 7.5s ease-in-out infinite alternate;
   }
 
   .branch-sway-alt {
     transform-origin: 100% 0%;
-    animation: slow-sway 8.2s ease-in-out infinite alternate-reverse;
+    animation: corner-sway 8.2s ease-in-out infinite alternate-reverse;
   }
 
-  @keyframes slow-sway {
+  @keyframes corner-sway {
     0% {
       transform: rotate(0deg);
     }
     100% {
-      transform: rotate(0.8deg);
+      transform: rotate(0.9deg);
     }
   }
 
@@ -242,4 +233,3 @@
     }
   }
 </style>
-

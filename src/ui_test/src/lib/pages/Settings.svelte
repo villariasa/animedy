@@ -3,7 +3,6 @@
   import Icon from "$lib/components/Icon.svelte";
   import HoverSelect from "$lib/components/HoverSelect.svelte";
   import { settings, DEFAULT_SETTINGS } from "$lib/stores/settings.svelte";
-  import { seasonal } from "$lib/stores/seasonal.svelte";
   import { auth } from "$lib/stores/auth.svelte";
   import { pushSupported, currentPushSubscription, enablePush, disablePush } from "$lib/push";
   import { USERNAME_RE, passwordProblems, passwordStrength } from "$lib/api/account";
@@ -689,53 +688,6 @@
       </div>
     </div>
   </form>
-
-  <!-- Seasonal Atmosphere -->
-  <section class="rounded-2xl border border-border/80 bg-card/70 p-5 sm:p-6 shadow-xl backdrop-blur-xl">
-    <div class="flex items-center gap-2.5 mb-3">
-      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400 shrink-0">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <line x1="12" y1="2" x2="12" y2="22"></line>
-          <path d="m20 16-4-4 4-4"></path>
-          <path d="m4 8 4 4-4 4"></path>
-          <path d="m16 4-4 4-4-4"></path>
-          <path d="m8 20 4-4 4 4"></path>
-        </svg>
-      </span>
-      <div>
-        <h2 class="text-sm font-bold tracking-tight text-foreground">Holiday Atmosphere</h2>
-        <p class="text-xs text-muted-foreground">Festive background snowfall, warm string lights, and pine accents</p>
-      </div>
-    </div>
-
-    <div class="flex items-center justify-between gap-4 py-2">
-      <span class="text-sm font-medium text-foreground">Seasonal decorations</span>
-      <div class="flex items-center rounded-lg border border-border/80 bg-background/80 p-0.5 text-xs font-semibold">
-        <button
-          type="button"
-          class="rounded-md px-2.5 py-1 transition-all {seasonal.preference === 'auto' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-          onclick={() => seasonal.setPreference('auto')}
-        >
-          Auto (Dec–Jan)
-        </button>
-        <button
-          type="button"
-          class="rounded-md px-2.5 py-1 transition-all {seasonal.preference === 'on' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-          onclick={() => seasonal.setPreference('on')}
-        >
-          On
-        </button>
-        <button
-          type="button"
-          class="rounded-md px-2.5 py-1 transition-all {seasonal.preference === 'off' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-          onclick={() => seasonal.setPreference('off')}
-        >
-          Off
-        </button>
-      </div>
-    </div>
-  </section>
 
   <!-- Data & Backup (outside the form — unrelated to player-settings save state) -->
   <section class="rounded-2xl border border-border/80 bg-card/70 p-5 sm:p-6 shadow-xl backdrop-blur-xl">

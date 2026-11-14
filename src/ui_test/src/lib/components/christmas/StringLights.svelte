@@ -13,23 +13,24 @@
   let bulbs = $state<Bulb[]>([]);
 
   const PALETTE = [
-    { color: "#e8b03e", glow: "rgba(232, 176, 62, 0.45)" }, // Warm gold
-    { color: "#d9434e", glow: "rgba(217, 67, 78, 0.4)" },   // Cranberry ruby
-    { color: "#3da669", glow: "rgba(61, 166, 105, 0.38)" }, // Soft pine green
-    { color: "#faecc5", glow: "rgba(250, 236, 197, 0.45)" }, // Champagne soft white
-    { color: "#e8983e", glow: "rgba(232, 152, 62, 0.4)" }   // Amber glow
+    { color: "#ff2e4d", glow: "rgba(255, 46, 77, 0.8)" },  // Ruby red
+    { color: "#ffb81c", glow: "rgba(255, 184, 28, 0.8)" }, // Warm gold
+    { color: "#00e676", glow: "rgba(0, 230, 118, 0.75)" },// Emerald pine
+    { color: "#00e5ff", glow: "rgba(0, 229, 255, 0.75)" },// Icy cyan
+    { color: "#fff5d0", glow: "rgba(255, 245, 208, 0.85)" }, // Warm champagne
+    { color: "#ff6d00", glow: "rgba(255, 109, 0, 0.8)" }  // Festive orange
   ];
 
   function computeBulbs(w: number) {
-    const spacing = Math.max(38, Math.min(54, w / 28));
-    const count = Math.max(8, Math.floor(w / spacing));
+    const spacing = Math.max(34, Math.min(50, w / 30));
+    const count = Math.max(10, Math.floor(w / spacing));
     const actualSpacing = w / count;
 
     const list: Bulb[] = [];
     for (let i = 0; i <= count; i++) {
       const p = PALETTE[i % PALETTE.length];
-      const dur = 4.2 + (i % 5) * 0.7;
-      const del = (i * 0.45) % 3.5;
+      const dur = 3.6 + (i % 4) * 0.8;
+      const del = (i * 0.4) % 3.2;
       list.push({
         x: i * actualSpacing,
         color: p.color,
@@ -52,101 +53,100 @@
   });
 </script>
 
+<!-- Placed right along the bottom edge of the sticky header (top-[51px]) at z-45 so it is 100% visible -->
 <div
-  class="pointer-events-none fixed inset-x-0 top-0 z-30 h-11 w-full overflow-hidden select-none"
+  class="pointer-events-none fixed inset-x-0 top-[51px] z-45 h-9 w-full overflow-visible select-none"
   aria-hidden="true"
 >
   <svg
     class="h-full w-full overflow-visible"
-    viewBox="0 0 {containerWidth} 36"
+    viewBox="0 0 {containerWidth} 32"
     preserveAspectRatio="none"
   >
     <defs>
-      <!-- Subtle wire shadow -->
-      <filter id="wire-shadow" x="-5%" y="-5%" width="110%" height="110%">
-        <feDropShadow dx="0" dy="1" stdDeviation="0.8" flood-opacity="0.4" flood-color="#000" />
+      <filter id="bulb-shadow" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-opacity="0.6" flood-color="#000" />
       </filter>
     </defs>
 
-    <!-- Dark pine twisted wire with natural catenary sagging between bulbs -->
+    <!-- Wire string catenary draping between bulbs -->
     {#if bulbs.length > 1}
       {#each bulbs.slice(0, -1) as bulb, idx}
         {@const next = bulbs[idx + 1]}
         {@const midX = (bulb.x + next.x) / 2}
-        {@const sag = Math.min(10, (next.x - bulb.x) * 0.22)}
+        {@const sag = Math.min(9, (next.x - bulb.x) * 0.2)}
+        <!-- Dark green twisted cord -->
         <path
           d="M {bulb.x} 0 Q {midX} {sag + 2} {next.x} 0"
           fill="none"
-          stroke="#162619"
-          stroke-width="1.8"
+          stroke="#0f1d13"
+          stroke-width="2"
           stroke-linecap="round"
-          filter="url(#wire-shadow)"
         />
         <path
           d="M {bulb.x} 0 Q {midX} {sag + 1.5} {next.x} 0"
           fill="none"
-          stroke="#263d2b"
-          stroke-width="0.8"
+          stroke="#1b3d24"
+          stroke-width="1"
           stroke-linecap="round"
-          opacity="0.75"
+          opacity="0.85"
         />
       {/each}
     {/if}
 
-    <!-- Light bulbs with sockets and soft glow -->
-    {#each bulbs as b, idx}
-      <!-- Socket fixture -->
+    <!-- Bulbs with dark socket clips and glowing glass capsules -->
+    {#each bulbs as b}
+      <!-- Socket collar -->
       <rect
         x={b.x - 2.5}
         y="1"
         width="5"
         height="4"
         rx="1"
-        fill="#142116"
-        stroke="#273a2a"
-        stroke-width="0.6"
+        fill="#0b160e"
+        stroke="#1c3622"
+        stroke-width="0.8"
       />
-      <!-- Tiny socket brass collar -->
       <rect
         x={b.x - 2}
         y="4"
         width="4"
         height="1.5"
-        fill="#5a4d2f"
-        opacity="0.85"
+        fill="#7c6020"
       />
 
-      <!-- Glass bulb with gentle CSS breathing glow -->
+      <!-- Glowing bulb -->
       <g
-        class="christmas-bulb-glow"
+        class="festive-bulb"
         style="--bulb-color: {b.color}; --bulb-glow: {b.glow}; --anim-dur: {b.duration}; --anim-delay: {b.delay};"
       >
-        <!-- Teardrop shaped realistic holiday bulb -->
+        <!-- Glass bulb body -->
         <path
           d="M {b.x - 2.5} 5.5
-             C {b.x - 4.5} 8.5, {b.x - 4} 13.5, {b.x} 17
-             C {b.x + 4} 13.5, {b.x + 4.5} 8.5, {b.x + 2.5} 5.5
+             C {b.x - 5} 9, {b.x - 4.5} 14.5, {b.x} 18
+             C {b.x + 4.5} 14.5, {b.x + 5} 9, {b.x + 2.5} 5.5
              Z"
           fill={b.color}
-          opacity="0.92"
+          opacity="0.96"
+          filter="url(#bulb-shadow)"
         />
-        <!-- Inner warm filament filament highlight -->
+        <!-- Inner bright core -->
         <ellipse
           cx={b.x}
-          cy="10.5"
-          rx="1.4"
-          ry="3"
-          fill="#fff"
-          opacity="0.7"
+          cy="11"
+          rx="1.6"
+          ry="3.5"
+          fill="#ffffff"
+          opacity="0.85"
         />
-        <!-- Glass shine curve -->
+        <!-- Glass highlight reflection -->
         <path
-          d="M {b.x - 2.2} 8 C {b.x - 2.8} 10.5, {b.x - 1.8} 13, {b.x - 0.5} 14.5"
+          d="M {b.x - 2.2} 8 C {b.x - 3} 10.5, {b.x - 2} 13.5, {b.x - 0.5} 15"
           fill="none"
           stroke="#ffffff"
-          stroke-width="0.7"
+          stroke-width="0.8"
           stroke-linecap="round"
-          opacity="0.65"
+          opacity="0.8"
         />
       </g>
     {/each}
@@ -154,34 +154,33 @@
 </div>
 
 <style>
-  .christmas-bulb-glow {
-    filter: drop-shadow(0 0 5px var(--bulb-glow)) drop-shadow(0 0 10px var(--bulb-glow));
-    animation: gentle-glow var(--anim-dur) ease-in-out infinite alternate;
+  .festive-bulb {
+    filter: drop-shadow(0 0 6px var(--bulb-glow)) drop-shadow(0 0 12px var(--bulb-glow));
+    animation: festive-pulse var(--anim-dur) ease-in-out infinite alternate;
     animation-delay: var(--anim-delay);
     will-change: filter, opacity;
   }
 
-  @keyframes gentle-glow {
+  @keyframes festive-pulse {
     0% {
-      opacity: 0.72;
-      filter: drop-shadow(0 0 3px var(--bulb-glow));
+      opacity: 0.8;
+      filter: drop-shadow(0 0 4px var(--bulb-glow)) drop-shadow(0 0 8px var(--bulb-glow));
     }
     50% {
-      opacity: 0.95;
-      filter: drop-shadow(0 0 7px var(--bulb-glow)) drop-shadow(0 0 13px var(--bulb-glow));
+      opacity: 1;
+      filter: drop-shadow(0 0 8px var(--bulb-glow)) drop-shadow(0 0 16px var(--bulb-glow));
     }
     100% {
-      opacity: 0.78;
-      filter: drop-shadow(0 0 4px var(--bulb-glow));
+      opacity: 0.85;
+      filter: drop-shadow(0 0 5px var(--bulb-glow)) drop-shadow(0 0 10px var(--bulb-glow));
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .christmas-bulb-glow {
+    .festive-bulb {
       animation: none !important;
-      opacity: 0.85;
-      filter: drop-shadow(0 0 5px var(--bulb-glow));
+      opacity: 0.95;
+      filter: drop-shadow(0 0 6px var(--bulb-glow));
     }
   }
 </style>
-

@@ -2,6 +2,7 @@
   // Admin dashboard — live sessions (guests + accounts) and per-user stats.
   // Gated on role=admin client-side; the API enforces it server-side too.
   import { auth } from "$lib/stores/auth.svelte";
+  import { seasonal } from "$lib/stores/seasonal.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import {
     apiAdminActivity,
@@ -244,6 +245,15 @@
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">Admin — live activity</h1>
       <div class="flex items-center gap-2">
+        <button
+          type="button"
+          onclick={() => seasonal.setAdminEnabled(!seasonal.enabled)}
+          class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-all cursor-pointer {seasonal.enabled ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-400 shadow-sm' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'}"
+          title="Enable or disable the Christmas Holiday Theme site-wide (Admin only)"
+        >
+          <span>🎄 Christmas Theme:</span>
+          <span class="font-extrabold">{seasonal.enabled ? "ACTIVE" : "DISABLED"}</span>
+        </button>
         {#if pushSupported()}
           <button
             type="button"

@@ -17,6 +17,7 @@
   import NotificationPrompt from "$lib/components/NotificationPrompt.svelte";
   import AmbientBackground from "$lib/components/AmbientBackground.svelte";
   import ChristmasDecorations from "$lib/components/christmas/ChristmasDecorations.svelte";
+  import { seasonal } from "$lib/stores/seasonal.svelte";
   import MobileNavDrawer from "$lib/components/MobileNavDrawer.svelte";
   import NotificationBell from "$lib/components/NotificationBell.svelte";
   import MoreMenu from "$lib/components/MoreMenu.svelte";
@@ -102,9 +103,29 @@
       <a
         href="#/"
         onclick={(e) => { e.preventDefault(); goHome(); }}
-        class="transition-opacity hover:opacity-90 flex items-center"
+        class="transition-opacity hover:opacity-90 flex items-center relative"
       >
         <img src="/icons/logo-small.png" alt="Animedy" class="h-7 w-auto sm:h-8" />
+        {#if seasonal.isActive}
+          <!-- Cute festive Santa Hat perched on the Animedy logo -->
+          <svg
+            viewBox="0 0 40 32"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            class="pointer-events-none absolute -top-3 -left-2.5 h-6 w-7 select-none overflow-visible filter drop-shadow(0 2px 4px rgba(0,0,0,0.6)) -rotate-12"
+            aria-hidden="true"
+          >
+            <!-- Red velvet hat cone -->
+            <path
+              d="M 6 22 Q 16 3 32 12 Q 22 22 6 22 Z"
+              fill="#e6192d"
+            />
+            <!-- Fur trim white brim -->
+            <rect x="4" y="20" width="22" height="6" rx="3" fill="#ffffff" />
+            <!-- White pom-pom puff -->
+            <circle cx="34" cy="13" r="4.5" fill="#ffffff" />
+          </svg>
+        {/if}
       </a>
     </div>
 
