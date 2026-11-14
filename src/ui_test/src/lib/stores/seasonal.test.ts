@@ -49,3 +49,4 @@ describe("seasonal holiday store", () => {
     expect(seasonal.preference).toBe("auto");
   });
 });
+

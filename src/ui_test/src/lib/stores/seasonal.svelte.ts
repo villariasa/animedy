@@ -62,3 +62,4 @@ class SeasonalStore {
 }
 
 export const seasonal = new SeasonalStore();
+
