@@ -17,7 +17,7 @@
 
 ## <img src="icons/sparkles.svg" width="22" height="22" align="center" /> Overview
 
-**Animedy** is a continuous anime watching platform designed to eliminate the manual friction of anime viewing. Today, watching an anime franchise requires constant management: searching for sequel seasons, consulting watch-order guides, skipping repetitive opening/ending sequences, and manually remembering playback progress across devices.
+**Animedy** is a continuous anime watching platform designed to eliminate the manual friction of anime viewing. Today, watching an anime franchise requires constant management: searching for sequel seasons, consulting watch-order guides, skipping repetitive opening/ending sequences, and manually remembering playback progress across devices. yeah shut it up 
 
 Animedy transforms this experience into a seamless pipeline:
 > **Find → Play → Resume → Skip Intro → Watch → Skip Outro → Next Episode → Next Season → Next Series**
